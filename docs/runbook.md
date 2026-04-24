@@ -88,6 +88,7 @@ old plan first if you want a clean slate).
 | ---------------------------------------- | ---------------------------------------------------- |
 | `POST /api/:product/invoke`              | Enqueue a task — returns `{ taskId, status }`        |
 | `POST /api/:product/webhook/:source`     | Generic webhook intake (validates + enqueues)        |
+| `GET  /api/:product/state`               | Product-owned read: spawns the `state` shim (M4)     |
 | `GET  /api/:product/events`              | SSE stream of task lifecycle events for that product |
 | `GET  /api/:product/tasks`               | List recent tasks for the product                    |
 | `GET  /api/:product/task/:taskId`        | Fetch a single task                                  |
@@ -128,9 +129,40 @@ pnpm --filter @abacus/platform rotate-logs     # Trim runtime/logs/ older than A
 pnpm --filter @abacus/platform reap-orphans    # Kill abacus-* tmux sessions whose tasks are terminal/missing
 ```
 
-## Running the dashboard (M4+)
+## Running a product dashboard (M4)
 
-Not yet wired. Next.js on :3000 will land with M4.
+Dashboards are product-scoped at `packages/<product>/dashboard/`. Each one is its
+own pnpm workspace project. Start the platform first (so the `/api/:product/state`
+and `/api/:product/events` endpoints exist), then run the dashboard in a second
+terminal:
+
+```bash
+# Terminal 1 — platform
+ABACUS_RUNNER=claude pnpm --filter @abacus/platform dev
+
+# Terminal 2 — marathon dashboard on :3000
+pnpm --filter @abacus-products/marathon-dashboard dev
+```
+
+The dashboard reads initial state via `GET /api/marathon/state`, submits effort
+logs via `POST /api/marathon/invoke`, and subscribes to `/api/marathon/events`
+(SSE). On `TASK_COMPLETE` / `TASK_FAILED` it refetches state. CORS is controlled
+by `ABACUS_CORS_ORIGINS` in `.env.local` (default allows
+`http://localhost:3000,http://127.0.0.1:3000`).
+
+### State shim
+
+`GET /api/:product/state` spawns the subprocess declared under `state.preScript`
+in the product's `abacus.json` with `ABACUS_PRODUCT` and `ABACUS_HTTP_QUERY`
+(JSON) in the env. The shim must exit 0 and print a JSON object on stdout; the
+platform returns that JSON verbatim as `application/json`. Marathon's shim is
+`packages/marathon/scripts/get-state.ts` — it reads Beads and returns the active
+plan, 14-day window of workouts, recent efforts/activities/flags. Platform code
+never parses the response body.
+
+If a product has no `state` entry in `abacus.json`, the route returns 404
+`{ error: "no_state_handler" }`. Default timeout is 10s; on timeout the shim
+is SIGKILLed and 504 is returned.
 
 ## Debugging a live agent session
 

@@ -26,6 +26,7 @@
     "reap-orphans": "tsx core-tools/reap-tmux-orphans.ts"
   },
   "dependencies": {
+    "@fastify/cors": "^10.0.1",
     "@modelcontextprotocol/sdk": "^1.0.4",
     "fastify-sse-v2": "^4.2.2",
     "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",

@@ -18,6 +18,9 @@
       "preScript": "tsx scripts/strava-webhook-shim.ts"
     }
   },
+  "state": {
+    "preScript": "tsx scripts/get-state.ts"
+  },
   "tasks": {
     "process_activity": {
       "preScript": "tsx scripts/fetch-and-store-strava.ts",

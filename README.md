@@ -24,7 +24,7 @@ Adding a product is by convention: create a `packages/<name>/` directory with
 hot-memory policy), and `.platform-denylist`. The platform discovers it
 automatically — no code changes to `packages/abacus/`.
 
-## Current status — M3 marathon ZFC scripts + real `claude` runner wired
+## Current status — M4 product-scoped dashboard live, round-trip verified
 
 The platform now ships with a real `ClaudeRunner` (set `ABACUS_RUNNER=claude` in env;
 the dummy runner remains the default for tests). For each task the runner resolves
@@ -54,17 +54,25 @@ handles the `hub.challenge` handshake + transforms Strava POSTs into
 via a generic `webhooks[source] = { preScript }` shim mechanism in `abacus.json`.
 See the runbook for the ngrok-based end-to-end flow.
 
+**M4 — product-scoped Next.js dashboard** landed. The dashboard lives inside its
+product at `packages/marathon/dashboard/` (not under a top-level `apps/` — each
+product brings its own UI). It reads through a new per-product state shim:
+`GET /api/:product/state` spawns the `preScript` declared under `state` in the
+product's `abacus.json`, captures JSON stdout, and returns it verbatim. Writes
+continue to flow through `POST /api/:product/invoke`. The dashboard subscribes to
+`/api/:product/events` via SSE and refetches state on `TASK_COMPLETE`/`TASK_FAILED`.
+See `docs/adr/0002-product-scoped-dashboards-and-state-shim.md`.
+
 **Still deferred**: watchdog token-cap parsing from `claude -p` per-turn JSON
-usage counter. M4 (Next.js dashboard) and M5 (OTel + drop-in product smoke) follow.
+usage counter. M5 (OTel + drop-in product smoke) follows.
 
 ## Repo layout
 
 ```
 packages/
-  abacus/          # The platform (product-agnostic)
-  marathon/        # Product #1 (PoC)
-apps/
-  dashboard/       # Next.js UI (arrives in M4)
+  abacus/                  # The platform (product-agnostic)
+  marathon/                # Product #1 (PoC)
+    dashboard/             # Product-scoped Next.js UI (M4)
 docs/
   spec.md          # Living product + technical spec
   architecture.md  # Module map and boundaries
@@ -88,6 +96,9 @@ cp .env.example .env.local
 
 # Start the platform (Fastify on :3001, dummy runner)
 pnpm --filter @abacus/platform dev
+
+# In another terminal, start the marathon dashboard (Next.js on :3000)
+pnpm --filter @abacus-products/marathon-dashboard dev
 
 # Or run the end-to-end smoke test (boots the server + exits on TASK_COMPLETE)
 pnpm --filter @abacus/platform smoke

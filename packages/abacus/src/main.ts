@@ -58,6 +58,7 @@ export async function bootstrap(): Promise<void> {
     registry,
     runtimeDir: config.ABACUS_RUNTIME_DIR,
     logger: config.ABACUS_HTTP_LOG,
+    corsOrigins: config.ABACUS_CORS_ORIGINS,
   });
 
   dispatcher.start();

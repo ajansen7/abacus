@@ -148,11 +148,28 @@ export const WebhookAction = z.discriminatedUnion('kind', [
 ]);
 export type WebhookAction = z.infer<typeof WebhookAction>;
 
+/**
+ * State shim — an optional product-owned subprocess the platform invokes for
+ * `GET /api/:product/state`. Same spawn envelope as webhook shims but reads
+ * only: it receives `ABACUS_PRODUCT` and `ABACUS_HTTP_QUERY` (JSON) in env
+ * and must exit 0 with JSON on stdout. The platform returns that JSON
+ * verbatim to the caller with `content-type: application/json`. Products use
+ * this to expose their own domain-shaped reads without the platform naming
+ * any domain concept.
+ */
+export const StateHandler = z
+  .object({
+    preScript: z.string().min(1),
+  })
+  .passthrough();
+export type StateHandler = z.infer<typeof StateHandler>;
+
 export const ProductManifest = z
   .object({
     hotMemory: HotMemoryPolicy.default({}),
     tasks: z.record(TaskKind, TaskHandler).default({}),
     webhooks: z.record(z.string().min(1), WebhookHandler).default({}),
+    state: StateHandler.optional(),
   })
   .passthrough();
 export type ProductManifest = z.infer<typeof ProductManifest>;

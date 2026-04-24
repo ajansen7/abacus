@@ -1,4 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
+import cors from '@fastify/cors';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
@@ -7,6 +8,7 @@ import type { ProductRegistry } from './product-registry.js';
 import type { Queue } from './queue.js';
 import type { SseBus } from './sse.js';
 import { InvokeRequest, InvokeResponse, ProductName, TaskStatus, WebhookParams } from './types.js';
+import { runStateShim } from './state-shim.js';
 import { runWebhookShim } from './webhook-shim.js';
 
 export interface ServerDeps {
@@ -15,6 +17,8 @@ export interface ServerDeps {
   runtimeDir: string;
   registry?: ProductRegistry;
   logger?: boolean;
+  /** Comma-separated list of origins to allow, or `*` to allow any. */
+  corsOrigins?: string;
 }
 
 const ProductParam = z.object({ product: ProductName });
@@ -23,6 +27,18 @@ const TaskParam = z.object({ product: ProductName, taskId: z.string().min(1) });
 export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: deps.logger ?? false });
   const runtimeDir = resolve(deps.runtimeDir);
+
+  const corsRaw = deps.corsOrigins?.trim();
+  if (corsRaw) {
+    const origin =
+      corsRaw === '*'
+        ? true
+        : corsRaw
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean);
+    await app.register(cors, { origin, credentials: true });
+  }
 
   app.get('/health', async () => ({ status: 'ok' }));
 
@@ -137,6 +153,31 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
 
   app.post('/api/:product/webhook/:source', handleWebhook);
   app.get('/api/:product/webhook/:source', handleWebhook);
+
+  app.get('/api/:product/state', async (req, reply) => {
+    const { product } = ProductParam.parse(req.params);
+    const handler = deps.registry?.stateHandler(product);
+    if (!handler) {
+      await reply.status(404).send({ error: 'no_state_handler', product });
+      return;
+    }
+    const rawQuery = (req.query as Record<string, unknown>) ?? {};
+    const queryFlat: Record<string, string> = {};
+    for (const [k, v] of Object.entries(rawQuery)) {
+      queryFlat[k] = typeof v === 'string' ? v : JSON.stringify(v);
+    }
+    try {
+      const body = await runStateShim({
+        product: deps.registry!.require(product),
+        handler,
+        request: { query: queryFlat },
+      });
+      await reply.header('content-type', 'application/json; charset=utf-8').send(body);
+    } catch (err) {
+      req.log.error({ err }, 'state shim failed');
+      await reply.status(500).send({ error: 'shim_failure', message: (err as Error).message });
+    }
+  });
 
   app.get('/api/:product/events', (req, reply) => {
     const { product } = ProductParam.parse(req.params);

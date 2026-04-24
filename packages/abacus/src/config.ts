@@ -14,6 +14,7 @@ const RawEnv = z.object({
     .string()
     .optional()
     .transform((v) => v === '1' || v === 'true'),
+  ABACUS_CORS_ORIGINS: z.string().default('http://localhost:3000,http://127.0.0.1:3000'),
 });
 
 export type Config = z.infer<typeof RawEnv>;

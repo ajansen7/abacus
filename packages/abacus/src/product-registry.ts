@@ -1,5 +1,5 @@
 import { discoverProducts } from './mcp-host.js';
-import type { DiscoveredProduct, TaskHandler, WebhookHandler } from './types.js';
+import type { DiscoveredProduct, StateHandler, TaskHandler, WebhookHandler } from './types.js';
 
 /**
  * In-memory cache of discovered products. Loaded once at platform start; if a
@@ -40,5 +40,9 @@ export class ProductRegistry {
 
   webhookHandler(product: string, source: string): WebhookHandler | undefined {
     return this.require(product).manifest.webhooks[source];
+  }
+
+  stateHandler(product: string): StateHandler | undefined {
+    return this.require(product).manifest.state;
   }
 }

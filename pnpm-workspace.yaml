@@ -1,5 +1,6 @@
 packages:
   - 'packages/*'
+  - 'packages/*/dashboard'
   - 'apps/*'
 allowBuilds:
   better-sqlite3: true

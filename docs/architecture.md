@@ -16,14 +16,13 @@
 │   │   ├── .claude.json             # Platform MCP config (no abacus.json — that's what makes this NOT a product)
 │   │   └── claude.md                # Platform runtime constitution
 │   └── marathon/                    # Product #1 — Marathon Planner
-│       ├── scripts/                 # Deterministic ZFC scripts (M3+)
+│       ├── scripts/                 # Deterministic ZFC scripts (M3+) incl. state shim
 │       ├── mcp-servers/             # MCP tools for the agent (M3+)
+│       ├── dashboard/               # Product-scoped Next.js UI (M4)
 │       ├── .claude.json             # Product MCP config
-│       ├── abacus.json              # Platform-scoped manifest (hot-memory policy, etc.)
+│       ├── abacus.json              # Platform-scoped manifest (hot-memory, tasks, webhooks, state)
 │       ├── claude.md                # Product runtime constitution
 │       └── .platform-denylist       # Tokens platform code must never contain
-├── apps/
-│   └── dashboard/                   # Next.js UI (scaffolded in M4)
 ├── docs/
 │   ├── spec.md                      # Living product + technical spec
 │   ├── architecture.md              # This file
@@ -67,6 +66,7 @@ The boundary is load-bearing and enforced by CI:
 | `mcp-host.ts`   | Product discovery by convention + MCP config merge                                    | M2 ✅  |
 | `product-registry.ts` | In-memory cache of discovered products; resolves per-(product, kind) handlers + webhook handlers | M3 ✅  |
 | `webhook-shim.ts`     | Spawns a product's webhook shim subprocess, parses JSON action, returns it      | M3b ✅ |
+| `state-shim.ts`       | Spawns a product's state-read shim subprocess, returns raw JSON                 | M4 ✅  |
 | `secrets.ts`          | Webhook-token verifier (env lives in `config.ts`)                               | later  |
 | `otel.ts`       | OpenTelemetry bootstrap                                                               | M5     |
 
@@ -82,11 +82,22 @@ The boundary is load-bearing and enforced by CI:
 | `scripts/strava-onboard.ts`          | One-shot Strava OAuth; writes refresh token to `.env.local`                                   | M3b ✅ |
 | `scripts/strava-subscribe.ts`        | CLI to create / list / delete Strava webhook push-subscriptions                               | M3b ✅ |
 | `scripts/strava-webhook-shim.ts`     | Webhook shim: handles hub.challenge GET handshake + transforms POSTs into `enqueue` actions   | M3b ✅ |
+| `scripts/get-state.ts`               | State-read shim: returns JSON view of plan + current week + recent efforts/activities/flags   | M4 ✅  |
+| `dashboard/`                         | Next.js App Router UI (App Router, React 19, Tailwind 3). Reads `/api/marathon/state`, invokes via `/api/marathon/invoke`, subscribes to `/api/marathon/events` | M4 ✅  |
 
-### Dashboard (`apps/dashboard/`, M4)
+### Product-scoped dashboards (M4)
 
-Next.js App Router UI on port 3000. Talks to Abacus on port 3001 over REST + SSE.
-No business logic — pure rendering and event handling.
+Dashboards live **inside their product** at `packages/<product>/dashboard/`, not
+under a top-level `apps/` directory. This preserves platform/product separation:
+each product ships its own UI and domain-shaped reads; the platform hosts none.
+
+Reads flow through a new per-product shim. A product declares `state.preScript`
+in its `abacus.json`; `GET /api/:product/state` spawns that subprocess with
+`ABACUS_PRODUCT` and `ABACUS_HTTP_QUERY` (JSON) in the env and returns stdout
+verbatim as `application/json`. Writes continue to flow through `POST
+/api/:product/invoke`. Dashboards subscribe to `/api/:product/events` via SSE
+and refetch state on `TASK_COMPLETE` / `TASK_FAILED`. See
+`docs/adr/0002-product-scoped-dashboards-and-state-shim.md`.
 
 ## Data layer
 
@@ -108,8 +119,8 @@ only at the boundary and applies a row limit; the agent gets raw rows back.
 
 ## Runtime
 
-- `abacus` (Fastify) — port 3001 — accepts REST/webhook/SSE traffic, manages the task queue and tmux sessions.
-- `dashboard` (Next.js) — port 3000 — SSR/CSR UI.
+- `abacus` (Fastify) — port 3001 — accepts REST/webhook/SSE traffic, manages the task queue and tmux sessions. CORS for dashboards is controlled by `ABACUS_CORS_ORIGINS` (default: `http://localhost:3000,http://127.0.0.1:3000`).
+- Product dashboards (Next.js) — port 3000 — SSR/CSR UIs, one per product, packaged at `packages/<product>/dashboard/`.
 - Agent sessions — detached `tmux` named `abacus-<task_id>`, running `claude -p --output-format json --mcp-config <resolved>`. Logs piped to `runtime/logs/<task_id>.log`.
 - OTel exporter — local OTLP endpoint (port 4318) or file exporter for PoC.
 

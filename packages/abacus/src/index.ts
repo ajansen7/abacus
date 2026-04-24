@@ -29,6 +29,11 @@ export {
   type WebhookRequest,
 } from './webhook-shim.js';
 export {
+  runStateShim,
+  type RunStateShimOptions,
+  type StateRequest,
+} from './state-shim.js';
+export {
   AgentTask,
   ClaudeConfig,
   DiscoveredProduct,
@@ -39,6 +44,7 @@ export {
   ProductManifest,
   ProductName,
   SseEvent,
+  StateHandler,
   TaskHandler,
   TaskKind,
   TaskStatus,
