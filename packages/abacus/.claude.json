@@ -1,0 +1,5 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema/claude-config.json",
+  "_comment": "Platform-level MCP config. Product MCP servers are added from each packages/<product>/.claude.json during discovery by mcp-host.ts. Populated during M2.",
+  "mcpServers": {}
+}

@@ -1,0 +1,41 @@
+{
+  "name": "@abacus/platform",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Abacus orchestration platform. Product-agnostic. Hosts any product under packages/<name>/.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "smoke": "tsx scripts/smoke.ts",
+    "smoke:m2": "tsx scripts/smoke-m2.ts",
+    "smoke:m3": "tsx scripts/smoke-m3.ts",
+    "smoke:webhook": "tsx scripts/smoke-webhook-shim.ts",
+    "doctor": "tsx core-tools/doctor.ts",
+    "rotate-logs": "tsx core-tools/rotate-logs.ts",
+    "reap-orphans": "tsx core-tools/reap-tmux-orphans.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "fastify-sse-v2": "^4.2.2",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "better-sqlite3": "^11.5.0",
+    "dotenv": "^16.4.5",
+    "fastify": "^5.1.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12"
+  }
+}

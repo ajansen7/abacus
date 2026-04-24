@@ -1,0 +1,28 @@
+{
+  "name": "abacus-root",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Abacus — orchestration platform for headless agentic products on Claude Code. Marathon Planner is product #1 (PoC).",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "doctor": "bash scripts/doctor.sh",
+    "build": "pnpm -r --if-present build",
+    "lint": "pnpm run lint:zfc && pnpm run lint:purity",
+    "lint:zfc": "tsx scripts/lint-zfc.ts",
+    "lint:purity": "tsx scripts/lint-platform-purity.ts",
+    "typecheck": "pnpm -r --if-present typecheck",
+    "test": "pnpm -r --if-present test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "^22.9.0",
+    "eslint": "^9.14.0",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
+}

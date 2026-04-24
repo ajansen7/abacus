@@ -1,0 +1,31 @@
+{
+  "$schema": "../../docs/schema/product-manifest.json",
+  "_comment": "Platform-scoped manifest for the marathon product. Discovered by mcp-host.ts alongside claude.md + .claude.json. Defines hot memory + per-kind task handlers (preScript + prompt template).",
+  "hotMemory": {
+    "types": [
+      "marathon:training-plan",
+      "marathon:week-block",
+      "marathon:workout",
+      "marathon:effort-log",
+      "marathon:strava-activity"
+    ],
+    "windowDays": 14,
+    "maxItems": 200,
+    "statusFilter": ["open"]
+  },
+  "webhooks": {
+    "strava": {
+      "preScript": "tsx scripts/strava-webhook-shim.ts"
+    }
+  },
+  "tasks": {
+    "process_activity": {
+      "preScript": "tsx scripts/fetch-and-store-strava.ts",
+      "prompt": "A new Strava activity was just stored as a `marathon:strava-activity` Beads issue. Task ID: {{taskId}}. Webhook payload: {{payloadJson}}.\n\nHot memory snapshot (open plan, recent workouts, effort logs, activities):\n{{hotMemoryJson}}\n\nEvaluate this activity against this week's planned workouts. If the agent's heuristics suggest overreach (see claude.md for thresholds), call `flag_overtraining`. If tomorrow's workout needs adjustment, call `update_workout`. If you need older context, call `query_history`. Use `get_plan` first if hot memory is missing the plan."
+    },
+    "log_effort": {
+      "preScript": "tsx scripts/ingest-perceived-effort.ts",
+      "prompt": "A perceived-effort log was just stored as a `marathon:effort-log` Beads issue. Task ID: {{taskId}}. Payload: {{payloadJson}}.\n\nHot memory snapshot:\n{{hotMemoryJson}}\n\nIf the score is concerning (RPE ≥ 8 on what was meant to be an easy session, or sustained high RPE across the recent window), follow the heuristics in claude.md and either `flag_overtraining` or `update_workout` to back off the next session. If everything is in band, finish without writes."
+    }
+  }
+}

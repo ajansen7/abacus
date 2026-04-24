@@ -1,0 +1,15 @@
+# Tokens that must never appear in packages/abacus/src/.
+# Platform-purity lint scans each token against platform code (whole-word, case-insensitive).
+# Keep entries unambiguous: domain-specific words whose presence in platform code would
+# be a real leak. Generic words with legitimate platform meanings (e.g., `runner` as in
+# task runner, `race` as in race-condition) are NOT appropriate for this list.
+# Lines starting with # are comments; blank lines are ignored.
+
+marathon
+strava
+workout
+workouts
+effort
+pace
+training
+overtraining

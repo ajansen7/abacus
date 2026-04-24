@@ -1,0 +1,10 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schema/claude-config.json",
+  "_comment": "Product MCP server registrations. Discovered by mcp-host.ts and merged with the platform's core MCP config.",
+  "mcpServers": {
+    "marathon-training-plan": {
+      "command": "tsx",
+      "args": ["./mcp-servers/training-plan/server.ts"]
+    }
+  }
+}
