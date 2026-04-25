@@ -1,4 +1,5 @@
 import type { FastifyReply } from 'fastify';
+import type { OutgoingHttpHeaders } from 'node:http';
 import type { SseEvent } from './types.js';
 
 interface Subscriber {
@@ -30,13 +31,15 @@ export class SseBus {
   }
 
   subscribe(product: string, reply: FastifyReply): () => void {
-    reply.hijack();
-    reply.raw.writeHead(200, {
+    const preHijackHeaders: OutgoingHttpHeaders = {
+      ...(reply.getHeaders() as OutgoingHttpHeaders),
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       Connection: 'keep-alive',
       'X-Accel-Buffering': 'no',
-    });
+    };
+    reply.hijack();
+    reply.raw.writeHead(200, preHijackHeaders);
     reply.raw.write(': connected\n\n');
 
     const id = this.nextSubId++;

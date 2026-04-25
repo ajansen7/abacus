@@ -59,6 +59,7 @@ export async function bootstrap(): Promise<void> {
     runtimeDir: config.ABACUS_RUNTIME_DIR,
     logger: config.ABACUS_HTTP_LOG,
     corsOrigins: config.ABACUS_CORS_ORIGINS,
+    stateShimTimeoutMs: config.ABACUS_STATE_SHIM_TIMEOUT_MS,
   });
 
   dispatcher.start();

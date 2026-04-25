@@ -15,6 +15,7 @@ const RawEnv = z.object({
     .optional()
     .transform((v) => v === '1' || v === 'true'),
   ABACUS_CORS_ORIGINS: z.string().default('http://localhost:3000,http://127.0.0.1:3000'),
+  ABACUS_STATE_SHIM_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
 });
 
 export type Config = z.infer<typeof RawEnv>;

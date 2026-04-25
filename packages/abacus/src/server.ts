@@ -19,6 +19,8 @@ export interface ServerDeps {
   logger?: boolean;
   /** Comma-separated list of origins to allow, or `*` to allow any. */
   corsOrigins?: string;
+  /** Time budget for `/api/:product/state` shim subprocesses. Default 30s. */
+  stateShimTimeoutMs?: number;
 }
 
 const ProductParam = z.object({ product: ProductName });
@@ -171,6 +173,7 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
         product: deps.registry!.require(product),
         handler,
         request: { query: queryFlat },
+        ...(deps.stateShimTimeoutMs ? { timeoutMs: deps.stateShimTimeoutMs } : {}),
       });
       await reply.header('content-type', 'application/json; charset=utf-8').send(body);
     } catch (err) {
@@ -208,12 +211,14 @@ export async function buildServer(deps: ServerDeps): Promise<FastifyInstance> {
       await reply.status(404).send({ error: 'log_not_found' });
       return;
     }
-    reply.hijack();
-    reply.raw.writeHead(200, {
+    const preHijackHeaders: import('node:http').OutgoingHttpHeaders = {
+      ...(reply.getHeaders() as import('node:http').OutgoingHttpHeaders),
       'Content-Type': 'text/plain; charset=utf-8',
       'Cache-Control': 'no-cache',
       'X-Accel-Buffering': 'no',
-    });
+    };
+    reply.hijack();
+    reply.raw.writeHead(200, preHijackHeaders);
     const stream = createReadStream(logFile);
     stream.pipe(reply.raw);
     reply.raw.on('close', () => stream.destroy());

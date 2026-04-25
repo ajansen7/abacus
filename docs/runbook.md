@@ -161,8 +161,9 @@ plan, 14-day window of workouts, recent efforts/activities/flags. Platform code
 never parses the response body.
 
 If a product has no `state` entry in `abacus.json`, the route returns 404
-`{ error: "no_state_handler" }`. Default timeout is 10s; on timeout the shim
-is SIGKILLed and 504 is returned.
+`{ error: "no_state_handler" }`. Subprocess timeout is `ABACUS_STATE_SHIM_TIMEOUT_MS`
+(default 30s); on timeout the shim is SIGKILLed and 500 `{ error: "shim_failure" }`
+is returned. Cold tsx startup can run several seconds — keep this generous.
 
 ## Debugging a live agent session
 
