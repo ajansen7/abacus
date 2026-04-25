@@ -13,47 +13,7 @@
  */
 import { Beads } from '@abacus/platform';
 import { StravaWebhookPayload, TYPE_STRAVA_ACTIVITY } from '../lib/types.js';
-
-interface StravaTokenResponse {
-  access_token: string;
-  expires_at: number;
-}
-
-async function refreshAccessToken(env: NodeJS.ProcessEnv): Promise<string> {
-  const clientId = env.STRAVA_CLIENT_ID;
-  const clientSecret = env.STRAVA_CLIENT_SECRET;
-  const refresh = env.STRAVA_REFRESH_TOKEN;
-  if (!clientId || !clientSecret || !refresh) {
-    throw new Error(
-      'fetch-and-store-strava: STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET / STRAVA_REFRESH_TOKEN required (or set STRAVA_OFFLINE=1)',
-    );
-  }
-  const res = await fetch('https://www.strava.com/oauth/token', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      client_id: clientId,
-      client_secret: clientSecret,
-      grant_type: 'refresh_token',
-      refresh_token: refresh,
-    }),
-  });
-  if (!res.ok) {
-    throw new Error(`strava token refresh failed: ${res.status} ${await res.text()}`);
-  }
-  const json = (await res.json()) as StravaTokenResponse;
-  return json.access_token;
-}
-
-async function fetchActivity(activityId: number, accessToken: string): Promise<unknown> {
-  const res = await fetch(`https://www.strava.com/api/v3/activities/${activityId}`, {
-    headers: { authorization: `Bearer ${accessToken}` },
-  });
-  if (!res.ok) {
-    throw new Error(`strava activity fetch failed: ${res.status} ${await res.text()}`);
-  }
-  return res.json();
-}
+import { createStravaClient } from '../lib/strava-client.js';
 
 async function main(): Promise<void> {
   const raw = process.env.ABACUS_PAYLOAD;
@@ -61,7 +21,22 @@ async function main(): Promise<void> {
   const webhook = StravaWebhookPayload.parse(JSON.parse(raw));
 
   const offline = process.env.STRAVA_OFFLINE === '1';
-  const activity = offline ? webhook : await fetchActivityWithToken(webhook.object_id);
+
+  let activity: unknown;
+  if (offline) {
+    activity = webhook;
+  } else {
+    const clientId = process.env.STRAVA_CLIENT_ID;
+    const clientSecret = process.env.STRAVA_CLIENT_SECRET;
+    const refreshToken = process.env.STRAVA_REFRESH_TOKEN;
+    if (!clientId || !clientSecret || !refreshToken) {
+      throw new Error(
+        'fetch-and-store-strava: STRAVA_CLIENT_ID / STRAVA_CLIENT_SECRET / STRAVA_REFRESH_TOKEN required (or set STRAVA_OFFLINE=1)',
+      );
+    }
+    const client = createStravaClient({ clientId, clientSecret, refreshToken });
+    activity = await client.fetchActivity(webhook.object_id);
+  }
 
   const beads = new Beads();
   const id = await beads.create({
@@ -79,11 +54,6 @@ async function main(): Promise<void> {
     },
   });
   console.log(`[fetch-strava] ${id} (offline=${offline})`);
-}
-
-async function fetchActivityWithToken(activityId: number): Promise<unknown> {
-  const token = await refreshAccessToken(process.env);
-  return fetchActivity(activityId, token);
 }
 
 main().catch((err) => {
