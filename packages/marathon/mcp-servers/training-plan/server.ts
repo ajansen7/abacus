@@ -15,6 +15,22 @@ import {
   getPlan,
   queryHistory,
   updateWorkout,
+  CreateRaceInput,
+  createRace,
+  UpdatePlanMetaInput,
+  updatePlanMeta,
+  CreateWeekBlockInput,
+  createWeekBlock,
+  CreateWorkoutInput,
+  createWorkout,
+  SetWorkoutActualInput,
+  setWorkoutActual,
+  ReadPlanContextInput,
+  readPlanContext,
+  ListTemplatesInput,
+  listTemplates,
+  ReadTemplateInput,
+  readTemplate,
 } from './tools.js';
 
 async function main(): Promise<void> {
@@ -70,6 +86,102 @@ async function main(): Promise<void> {
     },
     async (input) => {
       const result = await flagOvertraining(input);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    },
+  );
+
+  server.registerTool(
+    'create_race',
+    {
+      description: 'Create a marathon:race entity for a target event.',
+      inputSchema: CreateRaceInput.shape,
+    },
+    async (input) => {
+      const result = await createRace(input);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    },
+  );
+
+  server.registerTool(
+    'update_plan_meta',
+    {
+      description: 'Patch metadata on an existing marathon:training-plan (e.g., set goalPace after generation).',
+      inputSchema: UpdatePlanMetaInput.shape,
+    },
+    async (input) => {
+      const result = await updatePlanMeta(input);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    },
+  );
+
+  server.registerTool(
+    'create_week_block',
+    {
+      description: 'Create a marathon:week-block scoped to a plan.',
+      inputSchema: CreateWeekBlockInput.shape,
+    },
+    async (input) => {
+      const result = await createWeekBlock(input);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    },
+  );
+
+  server.registerTool(
+    'create_workout',
+    {
+      description: 'Create a marathon:workout inside a week-block.',
+      inputSchema: CreateWorkoutInput.shape,
+    },
+    async (input) => {
+      const result = await createWorkout(input);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    },
+  );
+
+  server.registerTool(
+    'set_workout_actual',
+    {
+      description: 'Record what was actually done for a planned workout (met, partial, swapped, skipped, or extra).',
+      inputSchema: SetWorkoutActualInput.shape,
+    },
+    async (input) => {
+      const result = await setWorkoutActual(input);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    },
+  );
+
+  server.registerTool(
+    'read_plan_context',
+    {
+      description: 'Return the marathon:plan-context (free-form steering notes) for the active plan.',
+      inputSchema: ReadPlanContextInput.shape,
+    },
+    async (input) => {
+      const result = await readPlanContext(input);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    },
+  );
+
+  server.registerTool(
+    'list_templates',
+    {
+      description: 'List available plan template names (.md files in templates/plans/).',
+      inputSchema: ListTemplatesInput.shape,
+    },
+    async () => {
+      const result = await listTemplates();
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    },
+  );
+
+  server.registerTool(
+    'read_template',
+    {
+      description: 'Read a plan template by name. Pass the filename or just the base name (couch-to-marathon).',
+      inputSchema: ReadTemplateInput.shape,
+    },
+    async (input) => {
+      const result = await readTemplate(input);
       return { content: [{ type: 'text', text: JSON.stringify(result) }] };
     },
   );
