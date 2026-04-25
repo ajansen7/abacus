@@ -6,6 +6,8 @@ export const TYPE_WORKOUT = 'marathon:workout';
 export const TYPE_EFFORT_LOG = 'marathon:effort-log';
 export const TYPE_STRAVA_ACTIVITY = 'marathon:strava-activity';
 export const TYPE_FLAG = 'marathon:flag';
+export const TYPE_RACE = 'marathon:race';
+export const TYPE_PLAN_CONTEXT = 'marathon:plan-context';
 
 export const PaceMinPerKm = z
   .string()
@@ -17,10 +19,12 @@ export const IsoDate = z
   .regex(/^\d{4}-\d{2}-\d{2}$/, 'date must be YYYY-MM-DD');
 
 export const TrainingPlanMeta = z.object({
+  raceId: z.string().optional(),
   raceDate: IsoDate,
-  goalPace: PaceMinPerKm,
+  goalPace: PaceMinPerKm.optional(),
   startDate: IsoDate,
   weeks: z.number().int().positive(),
+  templateId: z.string().optional(),
 });
 export type TrainingPlanMeta = z.infer<typeof TrainingPlanMeta>;
 
@@ -42,8 +46,33 @@ export const WorkoutKind = z.enum([
   'intervals',
   'rest',
   'cross',
+  'strength',
 ]);
 export type WorkoutKind = z.infer<typeof WorkoutKind>;
+
+export const ActualActivityKind = z.enum([
+  'run',
+  'bike',
+  'swim',
+  'hike',
+  'strength',
+  'mobility',
+  'other',
+]);
+export type ActualActivityKind = z.infer<typeof ActualActivityKind>;
+
+export const DeviationStatus = z.enum(['met', 'partial', 'swapped', 'skipped', 'extra']);
+export type DeviationStatus = z.infer<typeof DeviationStatus>;
+
+export const WorkoutActual = z.object({
+  activityId: z.string().optional(),
+  activityKind: ActualActivityKind,
+  source: z.enum(['strava', 'manual']),
+  deviationStatus: DeviationStatus,
+  durationMin: z.number().int().nonnegative().optional(),
+  notes: z.string().optional(),
+});
+export type WorkoutActual = z.infer<typeof WorkoutActual>;
 
 export const WorkoutMeta = z.object({
   weekBlockId: z.string(),
@@ -53,6 +82,7 @@ export const WorkoutMeta = z.object({
   targetPace: PaceMinPerKm.optional(),
   notes: z.string().optional(),
   completed: z.boolean().default(false),
+  actual: WorkoutActual.optional(),
 });
 export type WorkoutMeta = z.infer<typeof WorkoutMeta>;
 
@@ -63,6 +93,7 @@ export const WorkoutPatch = z
     kind: WorkoutKind.optional(),
     notes: z.string().optional(),
     completed: z.boolean().optional(),
+    actual: WorkoutActual.optional(),
   })
   .refine((p) => Object.keys(p).length > 0, 'patch must include at least one field');
 export type WorkoutPatch = z.infer<typeof WorkoutPatch>;
@@ -93,3 +124,23 @@ export const FlagMeta = z.object({
   raisedAt: z.string(),
 });
 export type FlagMeta = z.infer<typeof FlagMeta>;
+
+export const RaceDistance = z.enum(['5k', '10k', 'half', 'marathon', 'ultra', 'other']);
+export type RaceDistance = z.infer<typeof RaceDistance>;
+
+export const RaceMeta = z.object({
+  name: z.string().min(1),
+  date: IsoDate,
+  distance: RaceDistance,
+  location: z.string().optional(),
+  goalFinishTime: z.string().regex(/^\d{1,2}:\d{2}:\d{2}$/).optional(),
+  notes: z.string().optional(),
+});
+export type RaceMeta = z.infer<typeof RaceMeta>;
+
+export const PlanContextMeta = z.object({
+  planId: z.string().min(1),
+  notes: z.string(),
+  updatedAt: z.string().optional(),
+});
+export type PlanContextMeta = z.infer<typeof PlanContextMeta>;
