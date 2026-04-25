@@ -18,6 +18,9 @@
   "webhooks": {
     "strava": {
       "preScript": "tsx scripts/strava-webhook-shim.ts"
+    },
+    "manual_activity": {
+      "preScript": "tsx scripts/manual-activity-shim.ts"
     }
   },
   "state": {
