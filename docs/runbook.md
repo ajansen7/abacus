@@ -1,7 +1,7 @@
 # Runbook
 
-> How to bring Abacus up, poke at it while it's running, and recover from common
-> failure modes. Grows with the system — at M0 it covers only the bootstrap.
+> How to bring Abacus up, exercise it, and recover from common failure modes.
+> Updated in the same change that alters observable behavior.
 
 ## First-time setup
 
@@ -12,27 +12,69 @@ pnpm install                     # Install workspace dependencies
 cp .env.example .env.local       # Fill in Strava creds, watchdog caps, OTLP endpoint
 ```
 
-## Running the platform
+## Bringing the whole stack up (one command)
+
+```bash
+bash scripts/dev-up.sh
+```
+
+Starts (in order):
+
+1. Abacus platform (Fastify on `:3001`, `ABACUS_RUNNER=claude`)
+2. Marathon dashboard (Next.js on `:3000`)
+3. `cloudflared` quick tunnel — prints a public `https://*.trycloudflare.com` URL
+4. Strava webhook subscription pointing at the tunnel URL
+
+Cleans up the Strava subscription and child processes on `Ctrl-C` /
+`SIGTERM`. Per-process logs land in `runtime/dev-logs/{platform,dashboard,cloudflared}.log`.
+
+Flags:
+
+- `--no-tunnel` — skip cloudflared + Strava subscription (use when you don't need the public webhook)
+- `--no-dashboard` — skip the dashboard (e.g., backend-only iteration)
+
+`dev-up.sh` refuses to start if `:3001` (or `:3000` when the dashboard is on) is
+already bound, so it never silently fights an existing process.
+
+## Running pieces individually
+
+### Platform
 
 ```bash
 pnpm --filter @abacus/platform dev     # Watch mode: tsx watch src/main.ts
 pnpm --filter @abacus/platform start   # Built artifact: node dist/main.js
 ```
 
-Fastify listens on `ABACUS_HOST:ABACUS_PORT` (default `127.0.0.1:3001`). HTTP request
-logging is off by default — set `ABACUS_HTTP_LOG=1` to enable it.
+Fastify listens on `ABACUS_HOST:ABACUS_PORT` (default `127.0.0.1:3001`). HTTP
+request logging is off by default — set `ABACUS_HTTP_LOG=1` to enable it.
 
 ### Runner selection
 
 `ABACUS_RUNNER` controls which runner the dispatcher uses for spawned tasks:
 
-- `dummy` (default) — writes a no-op bash script that echoes + sleeps + exits 0. Used for tests and the M1/M2 smokes.
+- `dummy` (default) — writes a no-op bash script that echoes + sleeps + exits 0. Used for tests and the smoke suite.
 - `claude` — the production runner. Looks up the per-(product, kind) handler from each product's `abacus.json`, runs the declared `preScript` for deterministic IO, then spawns `claude -p --output-format json --mcp-config <merged> --append-system-prompt <product/claude.md>` with the rendered prompt on stdin.
 
 Set `ABACUS_RUNNER=claude` in `.env.local` once `claude` is on PATH and a product
 declares the `(kind)` you intend to invoke.
 
-### Marathon product — Strava onboarding + webhook subscription
+### Marathon dashboard
+
+```bash
+pnpm --filter @abacus-products/marathon-dashboard dev
+```
+
+Next.js on `127.0.0.1:3000`. The dashboard reads initial state via
+`GET /api/marathon/state`, submits effort logs via `POST /api/marathon/invoke`,
+and subscribes to `/api/marathon/events` (SSE). On
+`TASK_COMPLETE`/`TASK_FAILED` it refetches state. CORS is controlled by
+`ABACUS_CORS_ORIGINS` in `.env.local` (default allows
+`http://localhost:3000,http://127.0.0.1:3000`).
+
+The platform must be running first — the dashboard's API routes proxy through to
+Fastify on `:3001`.
+
+## Marathon — Strava onboarding + webhook subscription
 
 One-time OAuth handshake (writes `STRAVA_REFRESH_TOKEN` to `.env.local`):
 
@@ -44,19 +86,21 @@ Starts a local HTTP server on `127.0.0.1:43117`, prints an authorize URL, and
 waits for the redirect callback. Strava app's "Authorization Callback Domain"
 must be set to `localhost`.
 
-Webhook subscription (needs the platform reachable from the public internet —
-use `ngrok` or equivalent):
+For the webhook subscription, the platform needs to be reachable from the
+public internet. `dev-up.sh` handles this end-to-end (cloudflared + subscribe).
+Manual flow:
 
 ```bash
 # 1. Start the platform with the real runner
 ABACUS_RUNNER=claude pnpm --filter @abacus/platform dev
 
 # 2. In another terminal, expose 3001
-ngrok http 3001
+cloudflared tunnel --url http://127.0.0.1:3001
+# (or `ngrok http 3001`)
 
 # 3. Register the webhook with Strava (one subscription per app)
 pnpm --filter @abacus-products/marathon exec tsx scripts/strava-subscribe.ts \
-  --callback https://<ngrok-id>.ngrok.app/api/marathon/webhook/strava
+  --callback https://<tunnel-id>.trycloudflare.com/api/marathon/webhook/strava
 
 # List / delete existing subscriptions
 pnpm --filter @abacus-products/marathon exec tsx scripts/strava-subscribe.ts --list
@@ -64,31 +108,32 @@ pnpm --filter @abacus-products/marathon exec tsx scripts/strava-subscribe.ts --d
 ```
 
 Strava performs the `hub.challenge` handshake the moment `--callback` is
-registered; the platform routes the GET to `packages/marathon/scripts/strava-webhook-shim.ts`,
-which validates `hub.verify_token` against `STRAVA_VERIFY_TOKEN` in
-`.env.local` and echoes the challenge back. Any activity you then record on
-Strava will POST to the same URL; the shim transforms it into an
-`enqueue(process_activity)` action with a dedupe key of
+registered; the platform routes the GET to
+`packages/marathon/scripts/strava-webhook-shim.ts`, which validates
+`hub.verify_token` against `STRAVA_VERIFY_TOKEN` in `.env.local` and echoes
+the challenge back. Any activity you then record on Strava POSTs to the same
+URL; the shim transforms it into an `enqueue(process_activity)` action with a
+dedupe key of
 `strava:<subscription_id>:<object_type>:<object_id>:<aspect_type>:<event_time>`.
 
-### Marathon product — seeding a plan
+## Marathon — seeding a plan
 
 ```bash
 pnpm --filter @abacus-products/marathon exec tsx scripts/seed-plan.ts \
   --weeks 4 --goal-pace 5:00 --race 2026-06-14
 ```
 
-Writes 1 `marathon:training-plan` + 4 `marathon:week-block` + 28 `marathon:workout`
-issues to Beads. Deterministic — re-run is additive (no upsert in v0; close the
-old plan first if you want a clean slate).
+Writes 1 `marathon:training-plan` + 4 `marathon:week-block` + 28
+`marathon:workout` issues to Beads. Deterministic — re-run is additive (no
+upsert; close the old plan first if you want a clean slate).
 
-### HTTP surface (M1)
+## HTTP surface
 
 | Route                                    | Purpose                                              |
 | ---------------------------------------- | ---------------------------------------------------- |
 | `POST /api/:product/invoke`              | Enqueue a task — returns `{ taskId, status }`        |
 | `POST /api/:product/webhook/:source`     | Generic webhook intake (validates + enqueues)        |
-| `GET  /api/:product/state`               | Product-owned read: spawns the `state` shim (M4)     |
+| `GET  /api/:product/state`               | Product-owned read: spawns the `state` shim          |
 | `GET  /api/:product/events`              | SSE stream of task lifecycle events for that product |
 | `GET  /api/:product/tasks`               | List recent tasks for the product                    |
 | `GET  /api/:product/task/:taskId`        | Fetch a single task                                  |
@@ -97,20 +142,22 @@ old plan first if you want a clean slate).
 ## Smoke tests
 
 ```bash
-pnpm --filter @abacus/platform smoke          # M1 — server + dispatcher + tmux end-to-end (DummyRunner)
-pnpm --filter @abacus/platform smoke:m2       # M2 — discovery + memory + cold-query guard
-pnpm --filter @abacus/platform smoke:m3       # M3 — ClaudeRunner.prepare wiring (no real claude spawn)
-pnpm --filter @abacus/platform smoke:webhook  # M3b — webhook shim: handshake + enqueue + rejections
-pnpm --filter @abacus/platform smoke:m5       # M5 — drop-in product smoke (tmp packages dir) + OTel trace tree
+pnpm --filter @abacus/platform smoke          # server + dispatcher + tmux end-to-end (DummyRunner)
+pnpm --filter @abacus/platform smoke:m2       # product discovery + memory + cold-query SELECT-only guard
+pnpm --filter @abacus/platform smoke:m3       # ClaudeRunner.prepare wiring (no real claude spawn)
+pnpm --filter @abacus/platform smoke:webhook  # webhook shim: handshake + enqueue + rejection paths
+pnpm --filter @abacus/platform smoke:m5       # drop-in product synthesized in tmpdir + OTel trace tree
 ```
 
-`smoke` boots the server in-process, subscribes to SSE, POSTs `/api/_test/invoke`,
-and waits up to 30 s for a matching `TASK_COMPLETE` event + `completed` status in
-Beads. `smoke:m2` exercises product discovery, MCP config resolution, the
-hot-memory loader, and the SELECT-only guard on cold-memory queries. `smoke:m3`
-calls `ClaudeRunner.prepare` against the real marathon product and asserts the
-generated wrapper script, prompt, system prompt, and merged MCP config are all
-well-formed (without spawning `claude`). All exit non-zero on any failure.
+What each one covers:
+
+- `smoke` boots the server in-process, subscribes to SSE, posts to `/api/_test/invoke`, and waits up to 30s for a matching `TASK_COMPLETE` event + `completed` status in Beads. The hardest end-to-end check the platform has under the dummy runner.
+- `smoke:m2` exercises product discovery (scan + manifest parse), MCP config resolution, the hot-memory loader, and the SELECT-only guard on cold-memory queries.
+- `smoke:m3` calls `ClaudeRunner.prepare` against the real marathon product and asserts the generated wrapper script, prompt, system prompt, and merged MCP config are all well-formed (without spawning `claude`).
+- `smoke:webhook` runs the marathon Strava webhook shim through happy-path challenge, valid POST → enqueue, and various rejection paths (bad verify_token, missing fields).
+- `smoke:m5` is the **platform/product separation regression test**: synthesizes a throwaway product in a tmpdir, points the platform at it via `ABACUS_PACKAGES_DIR`, runs a task end-to-end, and asserts a single OTel trace with `task.received → task.settled → {runner.prepare, tmux.spawned}`. Proves a brand-new product needs zero edits to `packages/abacus/`.
+
+All smokes exit non-zero on any failure.
 
 ## Lints
 
@@ -130,28 +177,7 @@ pnpm --filter @abacus/platform rotate-logs     # Trim runtime/logs/ older than A
 pnpm --filter @abacus/platform reap-orphans    # Kill abacus-* tmux sessions whose tasks are terminal/missing
 ```
 
-## Running a product dashboard (M4)
-
-Dashboards are product-scoped at `packages/<product>/dashboard/`. Each one is its
-own pnpm workspace project. Start the platform first (so the `/api/:product/state`
-and `/api/:product/events` endpoints exist), then run the dashboard in a second
-terminal:
-
-```bash
-# Terminal 1 — platform
-ABACUS_RUNNER=claude pnpm --filter @abacus/platform dev
-
-# Terminal 2 — marathon dashboard on :3000
-pnpm --filter @abacus-products/marathon-dashboard dev
-```
-
-The dashboard reads initial state via `GET /api/marathon/state`, submits effort
-logs via `POST /api/marathon/invoke`, and subscribes to `/api/marathon/events`
-(SSE). On `TASK_COMPLETE` / `TASK_FAILED` it refetches state. CORS is controlled
-by `ABACUS_CORS_ORIGINS` in `.env.local` (default allows
-`http://localhost:3000,http://127.0.0.1:3000`).
-
-### State shim
+## State shim
 
 `GET /api/:product/state` spawns the subprocess declared under `state.preScript`
 in the product's `abacus.json` with `ABACUS_PRODUCT` and `ABACUS_HTTP_QUERY`
@@ -162,9 +188,10 @@ plan, 14-day window of workouts, recent efforts/activities/flags. Platform code
 never parses the response body.
 
 If a product has no `state` entry in `abacus.json`, the route returns 404
-`{ error: "no_state_handler" }`. Subprocess timeout is `ABACUS_STATE_SHIM_TIMEOUT_MS`
-(default 30s); on timeout the shim is SIGKILLed and 500 `{ error: "shim_failure" }`
-is returned. Cold tsx startup can run several seconds — keep this generous.
+`{ error: "no_state_handler" }`. Subprocess timeout is
+`ABACUS_STATE_SHIM_TIMEOUT_MS` (default 30s); on timeout the shim is SIGKILLed
+and 500 `{ error: "shim_failure" }` is returned. Cold tsx startup can run
+several seconds — keep this generous.
 
 ## Debugging a live agent session
 
@@ -192,14 +219,23 @@ Dolt branching (for future CI): `dolt branch test/some-topic && dolt checkout te
 
 ## Recovering from a stuck agent
 
-The watchdog force-kills agent sessions that exceed the wall-clock cap today
-(`ABACUS_WATCHDOG_WALLCLOCK_SECONDS`, default 600 s). The token cap layers in M3b
-once the dispatcher consumes the per-turn JSON usage counter from `claude -p`.
+The watchdog force-kills agent sessions that exceed the wall-clock cap
+(`ABACUS_WATCHDOG_WALLCLOCK_SECONDS`, default 600 s). Token-cap parsing from
+`claude -p` per-turn JSON is currently advisory — wall-clock is the hard guard.
+
 Manual kill:
 
 ```bash
 tmux kill-session -t abacus-<task_id>
 bd update <task_id> --set-metadata status=failed --set-metadata failure_reason=manual
+```
+
+If `dev-up.sh` is killed ungracefully and leaves a Strava subscription dangling,
+clean it up by hand:
+
+```bash
+pnpm --filter @abacus-products/marathon exec tsx scripts/strava-subscribe.ts --list
+pnpm --filter @abacus-products/marathon exec tsx scripts/strava-subscribe.ts --delete <id>
 ```
 
 ## Observability — OTel traces
@@ -244,6 +280,6 @@ ls -t runtime/otel/spans-*.jsonl | head -1 | xargs jq -c '
 
 ## References
 
-- CLAUDE.md (repo tenets)
-- docs/architecture.md (module map)
-- docs/spec.md (product + technical spec)
+- `CLAUDE.md` — repo tenets
+- `docs/architecture.md` — module map
+- `docs/spec.md` — product + technical spec

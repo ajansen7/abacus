@@ -11,8 +11,8 @@ manage headless agentic workflows. It serves as an agnostic engine that handles 
 routing, webhook listening, and cross-session memory management using a single
 graph-database solution (Beads).
 
-On top of this framework, an open-ended set of **products** is planned. The proof-of-concept
-product shipping with v0 is a **Marathon Planning Tool**: a mobile-friendly web app that
+On top of this framework, an open-ended set of **products** is planned. The first product
+— and the platform's PoC — is a **Marathon Planning Tool**: a mobile-friendly web app that
 reacts to user inputs (perceived effort) and external events (Strava activity webhooks).
 By adhering to strict "Zero Framework Cognition" (ZFC) principles, the system acts as a
 thin, safe, deterministic shell for data ingestion and routing, while dynamically spinning
@@ -30,8 +30,8 @@ enforcer. It remains completely ignorant of product-specific logic.
 
 ### 2.1 System components
 
-- **API & Communications Gateway** — unified REST API for UI clients; webhook listener; SSE channels pushing real-time state updates to connected UIs; continuous bi-directional channels (e.g., Telegram bot — deferred in v0) for conversational mobile interaction.
-- **Security & Auth Layer** — lightweight plug-and-play identity provider (SQLite-backed JWT sessions — deferred in v0 unless exposed beyond Tailscale/localhost); central secrets vault for API keys and webhook-token verification.
+- **API & Communications Gateway** — unified REST API for UI clients; webhook listener; SSE channels pushing real-time state updates to connected UIs; continuous bi-directional channels (e.g., Telegram bot — not yet shipped) for conversational mobile interaction.
+- **Security & Auth Layer** — lightweight plug-and-play identity provider (SQLite-backed JWT sessions — not yet shipped; only needed once exposed beyond Tailscale/localhost); central secrets vault for API keys and webhook-token verification.
 - **Self-Healing Task Queue** — concurrency, state tracking (`pending`, `running`, `completed`, `failed`), retries, dedupe by `dedupe_key` within a TTL.
 - **Task Orchestrator & Circuit Breaker** — consumes queue jobs, spawns detached `tmux` sessions, enforces iteration / wall-clock / token caps via a watchdog.
 - **Two-Tier Memory Engine (Beads / Dolt)** — hot memory auto-injected into prompts; cold memory accessed on-demand via a `query_history(sql)` MCP tool.
@@ -123,11 +123,13 @@ where all domain judgement lives.
 ## 6. Developer experience, testing & observability
 
 - **"God Mode" debugger** — `tmux attach -t <task_id>` drops into a live agent session.
-- **OpenTelemetry tracing** — every agent session emits a structured trace tree capturing prompt, Hot Memory retrieved, MCP tool outputs, and token cost; decisions remain auditable after the tmux session closes.
-- **Agentic CI/CD via Dolt branches** — deferred in v0. Dolt's git-for-data support lets us create `test/<topic>` branches where an agent can mutate the DB, then `dolt diff` verifies behavior before merging.
-- **Dual-mode execution** — deferred in v0. A `--build` flag reconfigures Claude Code as a software engineer to help extend Abacus itself.
+- **OpenTelemetry tracing** — every task emits a single structured trace tree (`task.received → task.settled → {runner.prepare, memory.loaded, tmux.spawned}`); a JSONL exporter writes spans to `runtime/otel/`, and setting `OTEL_EXPORTER_OTLP_ENDPOINT` adds OTLP HTTP export. Decisions remain auditable after the tmux session closes.
+- **Agentic CI/CD via Dolt branches** — not yet shipped. Dolt's git-for-data support lets us create `test/<topic>` branches where an agent can mutate the DB, then `dolt diff` verifies behavior before merging.
+- **Dual-mode execution** — not yet shipped. A `--build` flag reconfigures Claude Code as a software engineer to help extend Abacus itself.
 
-## 7. Deferred from v0 (explicit)
+## 7. Explicit non-goals (for now)
 
-Telegram bot, `--build` SWE-persona mode, JWT auth layer, Dolt-branch-based test CI.
-Each slots into existing seams; none are blocked by the v0 shape.
+Telegram bot, `--build` SWE-persona mode, JWT auth layer, Dolt-branch-based test
+CI, and per-tool `agent.tool_call` child OTel spans (the last needs claude
+output streaming first). Each slots into existing seams when the time comes;
+none are blocked by the current shape.

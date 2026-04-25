@@ -10,15 +10,15 @@
 /
 ├── packages/
 │   ├── abacus/                      # Platform — product-agnostic orchestrator
-│   │   ├── src/                     # TypeScript sources (M1+M2 landed)
+│   │   ├── src/                     # TypeScript sources
 │   │   ├── scripts/                 # Package-local scripts (smoke tests)
 │   │   ├── core-tools/              # Agent-callable infra scripts (doctor, rotate-logs, reap-tmux-orphans)
 │   │   ├── .claude.json             # Platform MCP config (no abacus.json — that's what makes this NOT a product)
 │   │   └── claude.md                # Platform runtime constitution
 │   └── marathon/                    # Product #1 — Marathon Planner
-│       ├── scripts/                 # Deterministic ZFC scripts (M3+) incl. state shim
-│       ├── mcp-servers/             # MCP tools for the agent (M3+)
-│       ├── dashboard/               # Product-scoped Next.js UI (M4)
+│       ├── scripts/                 # Deterministic ZFC scripts incl. webhook + state shims
+│       ├── mcp-servers/             # MCP tools for the agent
+│       ├── dashboard/               # Product-scoped Next.js UI
 │       ├── .claude.json             # Product MCP config
 │       ├── abacus.json              # Platform-scoped manifest (hot-memory, tasks, webhooks, state)
 │       ├── claude.md                # Product runtime constitution
@@ -29,7 +29,10 @@
 │   ├── runbook.md                   # Operate / debug the running system
 │   └── adr/                         # Append-only architectural decisions (dated)
 ├── scripts/
-│   └── doctor.sh                    # Preflight: verifies bd / dolt / tmux / claude / node / pnpm
+│   ├── doctor.sh                    # Preflight: verifies bd / dolt / tmux / claude / node / pnpm
+│   ├── dev-up.sh                    # One-command stack: platform + dashboard + tunnel + Strava sub
+│   ├── lint-zfc.ts                  # Forbids payload-content branching in platform code
+│   └── lint-platform-purity.ts      # Greps every product's .platform-denylist against platform code
 └── [root config]                    # package.json, pnpm-workspace.yaml, tsconfig.base.json, eslint, prettier, .env.example
 ```
 
@@ -44,59 +47,60 @@ The boundary is load-bearing and enforced by CI:
 - **Products are discovered by convention.** `mcp-host.ts` scans `packages/*/` for any directory containing all three marker files: `claude.md`, `.claude.json`, and `abacus.json`. The platform's own package omits `abacus.json`, so it isn't discovered as a product. No platform-side registry exists; adding a product means creating a directory.
 - **CI enforces the boundary** via two lints in `scripts/`: `lint-zfc.ts` (forbids payload-content branching in `packages/abacus/src/`) and `lint-platform-purity.ts` (greps every product's `.platform-denylist` against platform code). Run via `pnpm -w run lint`.
 
-## Module responsibilities (filled in as code lands)
+## Module responsibilities
 
-### Platform (`packages/abacus/src/`, M1+)
+### Platform (`packages/abacus/src/`)
 
-| File            | Role                                                                                  | Status |
-| --------------- | ------------------------------------------------------------------------------------- | ------ |
-| `server.ts`     | Fastify: `/invoke`, `/events` (SSE), `/tasks`, `/task/:id/stream`, `/webhook/:src`    | M1 ✅  |
-| `queue.ts`      | Task queue over `platform:agent-task` Beads issues; dedupe by key within TTL          | M1 ✅  |
-| `dispatcher.ts` | Single-claimer poll loop; spawns tmux, arms watchdog, awaits `exit.code`              | M1 ✅  |
-| `tmux.ts`       | `execFile`-based wrapper: `spawn`, `kill`, `exists` with exact-name match             | M1 ✅  |
-| `watchdog.ts`   | Wall-clock cap (iteration + token caps layer in M3 with the real runner)              | M1 ✅  |
-| `sse.ts`        | Per-product channels + 15s heartbeat (`reply.hijack()` for Fastify raw writes)        | M1 ✅  |
-| `runner.ts`     | `Runner` interface; `DummyRunner` (test); `ClaudeRunner` (M3) renders per-task wrapper | M3 ✅  |
-| `beads.ts`      | `execFile` wrapper over `bd` CLI: `create`, `list`, `show`, `updateMetadata`, `close` | M1 ✅  |
-| `config.ts`     | Env loader with zod schema (ABACUS\_\* knobs; `.env.local` honored)                   | M1 ✅  |
-| `types.ts`      | Zod schemas for every boundary payload (`ProductName`, `TaskKind`, `TaskHandler`, …)  | M3 ✅  |
-| `main.ts`       | `bootstrap()`: wires config → beads → queue → tmux → sse → dispatcher → server        | M1 ✅  |
-| `index.ts`      | Public platform exports consumed by products                                          | M1 ✅  |
-| `memory.ts`     | Hot-memory loader (per-product manifest) + cold-memory SELECT-only Dolt query         | M2 ✅  |
-| `mcp-host.ts`   | Product discovery by convention + MCP config merge                                    | M2 ✅  |
-| `product-registry.ts` | In-memory cache of discovered products; resolves per-(product, kind) handlers + webhook handlers | M3 ✅  |
-| `webhook-shim.ts`     | Spawns a product's webhook shim subprocess, parses JSON action, returns it      | M3b ✅ |
-| `state-shim.ts`       | Spawns a product's state-read shim subprocess, returns raw JSON                 | M4 ✅  |
-| `secrets.ts`          | Webhook-token verifier (env lives in `config.ts`)                               | later  |
-| `otel.ts`             | OTel bootstrap (JSONL file exporter + optional OTLP HTTP) + `withSpan`/traceparent helpers | M5 ✅  |
+| File                  | Role                                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------------------- |
+| `server.ts`           | Fastify: `/invoke`, `/events` (SSE), `/tasks`, `/task/:id/stream`, `/state`, `/webhook/:src`      |
+| `queue.ts`            | Task queue over `platform:agent-task` Beads issues; dedupe by key within TTL                      |
+| `dispatcher.ts`       | Single-claimer poll loop; spawns tmux, arms watchdog, awaits `exit.code`                          |
+| `tmux.ts`             | `execFile`-based wrapper: `spawn`, `kill`, `exists` with exact-name match                         |
+| `watchdog.ts`         | Wall-clock cap (token cap layered when claude per-turn usage parsing lands)                       |
+| `sse.ts`              | Per-product channels + 15s heartbeat (`reply.hijack()` for Fastify raw writes)                    |
+| `runner.ts`           | `Runner` interface; `DummyRunner` (test); `ClaudeRunner` (renders per-task wrapper)               |
+| `beads.ts`            | `execFile` wrapper over `bd` CLI: `create`, `list`, `show`, `updateMetadata`, `close`             |
+| `config.ts`           | Env loader with zod schema (ABACUS\_\* knobs; `.env.local` honored)                               |
+| `types.ts`            | Zod schemas for every boundary payload (`ProductName`, `TaskKind`, `TaskHandler`, …)              |
+| `main.ts`             | `bootstrap()`: wires config → otel → beads → queue → tmux → sse → dispatcher → server             |
+| `index.ts`            | Public platform exports consumed by products                                                      |
+| `memory.ts`           | Hot-memory loader (per-product manifest) + cold-memory SELECT-only Dolt query                     |
+| `mcp-host.ts`         | Product discovery by convention + MCP config merge                                                |
+| `product-registry.ts` | In-memory cache of discovered products; resolves per-(product, kind) handlers + webhook handlers  |
+| `webhook-shim.ts`     | Spawns a product's webhook shim subprocess, parses JSON action, returns it                        |
+| `state-shim.ts`       | Spawns a product's state-read shim subprocess, returns raw JSON                                   |
+| `otel.ts`             | OTel bootstrap (JSONL file exporter + optional OTLP HTTP) + `withSpan`/traceparent helpers        |
 
-### Marathon product (`packages/marathon/`, M3)
+Forward-looking, not yet present: `secrets.ts` (webhook-token verifier; env currently lives in `config.ts`).
 
-| Path                                 | Role                                                                                          | Status |
-| ------------------------------------ | --------------------------------------------------------------------------------------------- | ------ |
-| `lib/types.ts`                       | Marathon domain zod schemas + type-label constants                                            | M3 ✅  |
-| `scripts/seed-plan.ts`               | Deterministic CLI: 1 plan + N week-blocks + 7N workouts written to Beads                      | M3 ✅  |
-| `scripts/fetch-and-store-strava.ts`  | Mechanical: Strava API call → `marathon:strava-activity` Beads issue (offline mode supported) | M3 ✅  |
-| `scripts/ingest-perceived-effort.ts` | Mechanical: validate slider input → `marathon:effort-log` issue                               | M3 ✅  |
-| `mcp-servers/training-plan/`         | MCP tools the agent calls: `get_plan`, `update_workout`, `query_history`, `flag_overtraining` | M3 ✅  |
-| `scripts/strava-onboard.ts`          | One-shot Strava OAuth; writes refresh token to `.env.local`                                   | M3b ✅ |
-| `scripts/strava-subscribe.ts`        | CLI to create / list / delete Strava webhook push-subscriptions                               | M3b ✅ |
-| `scripts/strava-webhook-shim.ts`     | Webhook shim: handles hub.challenge GET handshake + transforms POSTs into `enqueue` actions   | M3b ✅ |
-| `scripts/get-state.ts`               | State-read shim: returns JSON view of plan + current week + recent efforts/activities/flags   | M4 ✅  |
-| `dashboard/`                         | Next.js App Router UI (App Router, React 19, Tailwind 3). Reads `/api/marathon/state`, invokes via `/api/marathon/invoke`, subscribes to `/api/marathon/events` | M4 ✅  |
+### Marathon product (`packages/marathon/`)
 
-### Product-scoped dashboards (M4)
+| Path                                 | Role                                                                                          |
+| ------------------------------------ | --------------------------------------------------------------------------------------------- |
+| `lib/types.ts`                       | Marathon domain zod schemas + type-label constants                                            |
+| `scripts/seed-plan.ts`               | Deterministic CLI: 1 plan + N week-blocks + 7N workouts written to Beads                      |
+| `scripts/fetch-and-store-strava.ts`  | Mechanical: Strava API call → `marathon:strava-activity` Beads issue (offline mode supported) |
+| `scripts/ingest-perceived-effort.ts` | Mechanical: validate slider input → `marathon:effort-log` issue                               |
+| `scripts/strava-onboard.ts`          | One-shot Strava OAuth; writes refresh token to `.env.local`                                   |
+| `scripts/strava-subscribe.ts`        | CLI to create / list / delete Strava webhook push-subscriptions                               |
+| `scripts/strava-webhook-shim.ts`     | Webhook shim: handles hub.challenge GET handshake + transforms POSTs into `enqueue` actions   |
+| `scripts/get-state.ts`               | State-read shim: returns JSON view of plan + current week + recent efforts/activities/flags   |
+| `mcp-servers/training-plan/`         | MCP tools the agent calls: `get_plan`, `update_workout`, `query_history`, `flag_overtraining` |
+| `dashboard/`                         | Next.js App Router UI. Reads `/api/marathon/state`, invokes via `/api/marathon/invoke`, subscribes to `/api/marathon/events` |
+
+## Product-scoped dashboards
 
 Dashboards live **inside their product** at `packages/<product>/dashboard/`, not
 under a top-level `apps/` directory. This preserves platform/product separation:
 each product ships its own UI and domain-shaped reads; the platform hosts none.
 
-Reads flow through a new per-product shim. A product declares `state.preScript`
+Reads flow through a per-product state shim: a product declares `state.preScript`
 in its `abacus.json`; `GET /api/:product/state` spawns that subprocess with
 `ABACUS_PRODUCT` and `ABACUS_HTTP_QUERY` (JSON) in the env and returns stdout
-verbatim as `application/json`. Writes continue to flow through `POST
-/api/:product/invoke`. Dashboards subscribe to `/api/:product/events` via SSE
-and refetch state on `TASK_COMPLETE` / `TASK_FAILED`. See
+verbatim as `application/json`. Writes flow through `POST /api/:product/invoke`.
+Dashboards subscribe to `/api/:product/events` via SSE and refetch state on
+`TASK_COMPLETE` / `TASK_FAILED`. See
 `docs/adr/0002-product-scoped-dashboards-and-state-shim.md`.
 
 ## Data layer
@@ -130,4 +134,3 @@ only at the boundary and applies a row limit; the agent gets raw rows back.
 - Spec: `/docs/spec.md`
 - Runbook: `/docs/runbook.md`
 - ADRs: `/docs/adr/`
-- Plan: `/Users/alexjansen/.claude/plans/product-technical-specificationproject-hazy-neumann.md`
