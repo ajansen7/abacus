@@ -21,6 +21,9 @@
     },
     "manual_activity": {
       "preScript": "tsx scripts/manual-activity-shim.ts"
+    },
+    "update_plan_context": {
+      "preScript": "tsx scripts/update-plan-context-shim.ts"
     }
   },
   "state": {

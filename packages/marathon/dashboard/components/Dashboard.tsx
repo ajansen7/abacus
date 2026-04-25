@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { WorkoutTile } from './WorkoutTile';
 import { TaskStream } from './TaskStream';
+import { ActivityRow } from './ActivityRow';
+import { ManualActivityForm } from './ManualActivityForm';
 import { eventsUrl, getState, type MarathonState } from '@/lib/abacus';
 
 type LifecycleEvent =
@@ -18,6 +20,20 @@ interface LiveTask {
   phase: 'queued' | 'started' | 'complete' | 'failed';
   reason?: string;
 }
+
+function daysUntil(isoDate: string | undefined): number | null {
+  if (!isoDate) return null;
+  const target = new Date(`${isoDate}T00:00:00Z`).getTime();
+  return Math.ceil((target - Date.now()) / 86_400_000);
+}
+
+const DEVIATION_CHIP: Record<string, string> = {
+  met: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+  partial: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+  swapped: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+  skipped: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+  extra: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
+};
 
 export function Dashboard({ initial }: { initial: MarathonState | null }) {
   const [state, setState] = useState<MarathonState | null>(initial);
@@ -57,13 +73,17 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
                 ? { ...(existing ?? { taskId: evt.taskId }), phase: 'started' }
                 : evt.type === 'TASK_COMPLETE'
                   ? { ...(existing ?? { taskId: evt.taskId }), phase: 'complete' }
-                  : { ...(existing ?? { taskId: evt.taskId }), phase: 'failed', reason: evt.reason };
+                  : {
+                      ...(existing ?? { taskId: evt.taskId }),
+                      phase: 'failed' as const,
+                      reason: (evt as Extract<LifecycleEvent, { type: 'TASK_FAILED' }>).reason,
+                    };
           const filtered = prev.filter((t) => t.taskId !== evt.taskId);
           return [next, ...filtered].slice(0, 10);
         });
         if (evt.type === 'TASK_COMPLETE' || evt.type === 'TASK_FAILED') void refresh();
       } catch {
-        // Non-JSON keepalive comment — ignore.
+        // Non-JSON keepalive — ignore.
       }
     };
     return () => {
@@ -87,22 +107,57 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
       ? state.weeks.find((w) => w.index === state.currentWeekIndex) ?? null
       : state.weeks[0] ?? null;
 
+  const daysToRace = daysUntil(state.race?.date ?? state.plan?.raceDate);
+  const activities = state.allActivities ?? state.recentActivities;
+
   return (
     <main className="mx-auto max-w-2xl p-4 sm:p-6">
-      <header className="mb-6 flex items-center justify-between">
+      <header className="mb-6 flex items-start justify-between">
         <div>
           <div className="text-xs uppercase tracking-widest text-muted">Marathon</div>
-          <h1 className="text-lg font-semibold text-zinc-100">
-            {state.plan?.raceDate
-              ? `Race ${state.plan.raceDate} @ ${state.plan.goalPace ?? '—'}/km`
-              : 'No active plan'}
-          </h1>
+          {state.race ? (
+            <h1 className="text-lg font-semibold text-zinc-100">
+              {state.race.name}
+              {state.race.date ? (
+                <span className="ml-2 text-sm font-normal text-muted">· {state.race.date}</span>
+              ) : null}
+            </h1>
+          ) : state.plan ? (
+            <h1 className="text-lg font-semibold text-zinc-100">
+              {state.plan.raceDate
+                ? `Race ${state.plan.raceDate} @ ${state.plan.goalPace ?? '—'}/km`
+                : 'No active plan'}
+            </h1>
+          ) : (
+            <h1 className="text-lg font-semibold text-zinc-100">No active plan</h1>
+          )}
+          {daysToRace !== null ? (
+            <div className="mt-1 text-xs text-muted">{daysToRace} days to race</div>
+          ) : null}
+          {state.planContext?.notes ? (
+            <div
+              className="mt-1 max-w-sm truncate text-xs text-zinc-500"
+              title={state.planContext.notes}
+            >
+              {state.planContext.notes.length > 120
+                ? `${state.planContext.notes.slice(0, 120)}…`
+                : state.planContext.notes}
+            </div>
+          ) : null}
         </div>
-        <div className="text-right text-xs">
+        <div className="flex flex-col items-end gap-1 text-xs">
           <div className={connected ? 'text-emerald-400' : 'text-muted'}>
             {connected ? '● live' : '○ offline'}
           </div>
           <div className="text-muted">{state.todayIso}</div>
+          <div className="mt-1 flex gap-2">
+            <a href="/plan/new" className="text-zinc-400 underline underline-offset-2 hover:text-zinc-100">
+              new plan
+            </a>
+            <a href="/plan/context" className="text-zinc-400 underline underline-offset-2 hover:text-zinc-100">
+              context
+            </a>
+          </div>
         </div>
       </header>
 
@@ -116,12 +171,20 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {currentWeek.workouts.map((w) => (
-              <WorkoutTile
-                key={w.id}
-                workout={w}
-                isToday={w.date === state.todayIso}
-                onEffortLogged={() => void refresh()}
-              />
+              <div key={w.id} className="relative">
+                <WorkoutTile
+                  workout={w}
+                  isToday={w.date === state.todayIso}
+                  onEffortLogged={() => void refresh()}
+                />
+                {w.actual?.deviationStatus ? (
+                  <span
+                    className={`absolute right-2 top-2 rounded border px-1.5 py-0.5 text-xs ${DEVIATION_CHIP[w.actual.deviationStatus] ?? ''}`}
+                  >
+                    {w.actual.deviationStatus}
+                  </span>
+                ) : null}
+              </div>
             ))}
           </div>
         </section>
@@ -156,30 +219,19 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
         </section>
       ) : null}
 
-      {state.recentActivities.length > 0 ? (
-        <section className="mb-6">
-          <div className="mb-2 text-xs uppercase tracking-widest text-muted">Recent activity</div>
+      <section className="mb-6">
+        <div className="mb-2 text-xs uppercase tracking-widest text-muted">Activity log</div>
+        {activities.length > 0 ? (
           <div className="flex flex-col gap-2">
-            {state.recentActivities.slice(0, 5).map((a) => (
-              <div
-                key={a.id}
-                className="flex items-center justify-between rounded-md border border-border bg-panel px-3 py-2 text-sm"
-              >
-                <div className="truncate">
-                  <span className="text-zinc-200">{a.name ?? '(unnamed)'}</span>
-                  <span className="ml-2 text-xs text-muted">
-                    {a.sportType ?? ''} {a.aspectType ? `· ${a.aspectType}` : ''}
-                  </span>
-                </div>
-                <div className="text-right text-xs text-muted">
-                  {a.distance ? `${(a.distance / 1000).toFixed(2)} km` : ''}
-                  {a.startDateLocal ? ` · ${a.startDateLocal.slice(0, 16).replace('T', ' ')}` : ''}
-                </div>
-              </div>
+            {activities.slice(0, 20).map((a) => (
+              <ActivityRow key={a.id} activity={a} onChange={() => void refresh()} />
             ))}
           </div>
-        </section>
-      ) : null}
+        ) : (
+          <div className="text-sm text-muted">No activities yet.</div>
+        )}
+        <ManualActivityForm onAdded={() => void refresh()} />
+      </section>
 
       {state.flags.length > 0 ? (
         <section className="mb-6">

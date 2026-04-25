@@ -10,6 +10,16 @@ export async function getState(): Promise<MarathonState> {
   return (await res.json()) as MarathonState;
 }
 
+export async function webhookPost(name: string, body: unknown): Promise<unknown> {
+  const res = await fetch(`${ABACUS_URL}/api/marathon/webhook/${name}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`webhook ${name}: ${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 export async function invoke(
   kind: string,
   payload: unknown,
@@ -36,6 +46,15 @@ export function taskStreamUrl(taskId: string): string {
   return `${ABACUS_URL}/api/marathon/task/${taskId}/stream`;
 }
 
+export interface WorkoutActual {
+  activityId?: string;
+  activityKind: string;
+  source: string;
+  deviationStatus: 'met' | 'partial' | 'swapped' | 'skipped' | 'extra';
+  durationMin?: number;
+  notes?: string;
+}
+
 export interface Workout {
   id: string;
   status: string;
@@ -47,6 +66,7 @@ export interface Workout {
   targetPace?: string;
   weekBlockId?: string;
   notes?: string;
+  actual?: WorkoutActual;
 }
 
 export interface WeekBlock {
@@ -92,6 +112,38 @@ export interface ActivityEntry {
   startDateLocal?: string;
 }
 
+export interface FullActivityEntry {
+  id: string;
+  status: string;
+  title: string;
+  updatedAt?: string;
+  activityId?: number | string;
+  source?: string;
+  aspectType?: string;
+  name?: string;
+  sportType?: string;
+  distance?: number;
+  movingTime?: number;
+  startDateLocal?: string;
+}
+
+export interface RaceEntry {
+  id: string;
+  status: string;
+  name?: string;
+  date?: string;
+  distance?: string;
+  location?: string;
+  goalFinishTime?: string;
+}
+
+export interface PlanContextEntry {
+  id: string;
+  planId?: string;
+  notes?: string;
+  updatedAt?: string;
+}
+
 export interface FlagEntry {
   id: string;
   status: string;
@@ -105,9 +157,12 @@ export interface FlagEntry {
 export interface MarathonState {
   todayIso: string;
   plan: Plan | null;
+  race: RaceEntry | null;
+  planContext: PlanContextEntry | null;
   weeks: WeekBlock[];
   currentWeekIndex: number | null;
   recentEfforts: EffortEntry[];
   recentActivities: ActivityEntry[];
+  allActivities: FullActivityEntry[];
   flags: FlagEntry[];
 }

@@ -23,6 +23,8 @@ import { Beads } from '@abacus/platform';
 import {
   TYPE_EFFORT_LOG,
   TYPE_FLAG,
+  TYPE_PLAN_CONTEXT,
+  TYPE_RACE,
   TYPE_STRAVA_ACTIVITY,
   TYPE_TRAINING_PLAN,
   TYPE_WEEK_BLOCK,
@@ -47,13 +49,15 @@ function byUpdatedDesc(a: { updated_at?: string | undefined }, b: { updated_at?:
 async function main(): Promise<void> {
   const beads = new Beads();
 
-  const [plans, weekBlocks, workouts, efforts, activities, flags] = await Promise.all([
+  const [plans, weekBlocks, workouts, efforts, activities, flags, races, planContexts] = await Promise.all([
     beads.list([TYPE_TRAINING_PLAN]),
     beads.list([TYPE_WEEK_BLOCK]),
     beads.list([TYPE_WORKOUT]),
     beads.list([TYPE_EFFORT_LOG]),
     beads.list([TYPE_STRAVA_ACTIVITY]),
     beads.list([TYPE_FLAG]),
+    beads.list([TYPE_RACE]),
+    beads.list([TYPE_PLAN_CONTEXT]),
   ]);
 
   // Pick the most recently updated open plan as the "active" plan.
@@ -63,6 +67,13 @@ async function main(): Promise<void> {
       .sort(byUpdatedDesc)[0] ?? null;
   const planId = plan?.id;
   const planMeta = (plan?.metadata ?? {}) as Record<string, unknown>;
+
+  const race = plan && planMeta.raceId
+    ? races.find((r) => r.id === planMeta.raceId) ?? null
+    : null;
+  const planContext = planId
+    ? planContexts.find((c) => ((c.metadata ?? {}) as Record<string, unknown>).planId === planId) ?? null
+    : null;
 
   const myWeeks = planId
     ? weekBlocks.filter((w) => {
@@ -123,8 +134,8 @@ async function main(): Promise<void> {
       ...((e.metadata ?? {}) as Record<string, unknown>),
     }));
 
-  const recentActivities = activities
-    .sort(byUpdatedDesc)
+  const sortedActivities = activities.sort(byUpdatedDesc);
+  const recentActivities = sortedActivities
     .slice(0, 10)
     .map((a) => {
       const m = (a.metadata ?? {}) as Record<string, unknown>;
@@ -143,6 +154,25 @@ async function main(): Promise<void> {
         startDateLocal: activity.start_date_local,
       };
     });
+
+  const allActivities = sortedActivities.map((a) => {
+    const m = (a.metadata ?? {}) as Record<string, unknown>;
+    const activity = (m.activity ?? {}) as Record<string, unknown>;
+    return {
+      id: a.id,
+      status: a.status ?? 'open',
+      title: a.title ?? '',
+      updatedAt: a.updated_at,
+      activityId: m.activityId,
+      source: m.source ?? 'strava',
+      aspectType: m.aspectType,
+      name: activity.name,
+      sportType: String(activity.type ?? activity.sport_type ?? ''),
+      distance: activity.distance,
+      movingTime: activity.moving_time,
+      startDateLocal: activity.start_date_local,
+    };
+  });
 
   const flagsShaped = flags
     .sort(byUpdatedDesc)
@@ -165,10 +195,13 @@ async function main(): Promise<void> {
           ...planMeta,
         }
       : null,
+    race: race ? { id: race.id, status: race.status ?? 'open', ...((race.metadata ?? {}) as object) } : null,
+    planContext: planContext ? { id: planContext.id, ...((planContext.metadata ?? {}) as object) } : null,
     weeks: weeksShaped,
     currentWeekIndex: currentWeek?.index ?? null,
     recentEfforts,
     recentActivities,
+    allActivities,
     flags: flagsShaped,
   };
 
