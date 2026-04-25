@@ -49,6 +49,10 @@
     "generate_plan": {
       "preScript": "",
       "prompt": "A plan shell exists with a race, training-plan record, and plan-context. Task ID: {{taskId}}. Payload: {{payloadJson}}. Hot memory (race, plan, context, recent Strava activity from backfill): {{hotMemoryJson}}.\n\nYour job: read the plan-context notes, read the available templates via list_templates and read_template, choose the closest fit, then build out the full plan using create_week_block and create_workout. Honor every rule in claude.md (template selection, mileage cap, taper structure, partner/injury constraints). When done, you may also call update_plan_meta to set goalPace if the user implied one. Make no flag_overtraining calls in this task — that is for runtime adjustments only."
+    },
+    "daily_reeval": {
+      "preScript": "tsx scripts/daily-reeval-shim.ts",
+      "prompt": "Daily plan re-evaluation. Task ID: {{taskId}}. Hot memory: {{hotMemoryJson}}.\n\nRead the plan-context (it may have changed), survey the last 7 days of workouts and activities, and apply any necessary adjustments to the rest-of-current-week + next-week workouts per claude.md. If the plan-context now describes a constraint that wasn't honored in earlier weeks (e.g., new injury, partner availability change), shift the upcoming workouts to comply. Do not touch workouts beyond day+14 in this task. Exit silently if no adjustment is warranted."
     }
   }
 }

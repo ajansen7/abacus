@@ -278,6 +278,71 @@ ls -t runtime/otel/spans-*.jsonl | head -1 | xargs jq -c '
   {task: .attributes["abacus.task_id"], outcome: .attributes["abacus.outcome"], ms: (.durationNs/1e6)}'
 ```
 
+## Marathon — daily re-evaluation cron (launchd)
+
+The `daily_reeval` task re-surveys the last 7 days, checks whether the plan-context has changed (new injuries, schedule constraints), and adjusts the rest-of-current-week + next-week workouts. It runs no pre-script logic — the entire value is the Claude session reading hot memory.
+
+### Trigger via launchd (macOS)
+
+Create `~/Library/LaunchAgents/com.abacus.marathon.daily.plist`:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.abacus.marathon.daily</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/curl</string>
+    <string>-sS</string>
+    <string>-X</string>
+    <string>POST</string>
+    <string>http://127.0.0.1:3001/api/marathon/invoke</string>
+    <string>-H</string>
+    <string>content-type: application/json</string>
+    <string>-d</string>
+    <string>{"kind":"daily_reeval","payload":{}}</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>6</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>/tmp/abacus-daily-reeval.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/abacus-daily-reeval.log</string>
+</dict>
+</plist>
+```
+
+Load and enable:
+
+```bash
+launchctl load ~/Library/LaunchAgents/com.abacus.marathon.daily.plist
+```
+
+Disable:
+
+```bash
+launchctl unload ~/Library/LaunchAgents/com.abacus.marathon.daily.plist
+```
+
+Manually trigger (platform must be running):
+
+```bash
+curl -sS -X POST http://127.0.0.1:3001/api/marathon/invoke \
+  -H 'content-type: application/json' \
+  -d '{"kind":"daily_reeval","payload":{}}'
+```
+
+The response is `{ "taskId": "...", "status": "queued" }`. Watch the session in tmux: `tmux attach -t abacus-<taskId>`.
+
 ## References
 
 - `CLAUDE.md` — repo tenets
