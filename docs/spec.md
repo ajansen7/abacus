@@ -127,6 +127,60 @@ where all domain judgement lives.
 - **Agentic CI/CD via Dolt branches** — not yet shipped. Dolt's git-for-data support lets us create `test/<topic>` branches where an agent can mutate the DB, then `dolt diff` verifies behavior before merging.
 - **Dual-mode execution** — not yet shipped. A `--build` flag reconfigures Claude Code as a software engineer to help extend Abacus itself.
 
+## 8. Marathon — race-driven plan lifecycle
+
+*(Added 2026-04-25 — supersedes the simpler "seed-plan + forward-only Strava" description in §3.)*
+
+### 8.1 Entity model
+
+```
+marathon:race            raceId, name, date, distance, location?, goalFinishTime?
+marathon:training-plan   planId, raceId?, raceDate, startDate, weeks, templateId?, goalPace?
+marathon:plan-context    planContextId, planId, notes, updatedAt
+marathon:week-block      weekBlockId, planId, weekIndex, theme, startDate
+marathon:workout         workoutId, weekBlockId, date, kind, targetDurationMin, actual?
+marathon:strava-activity activityIssueId (wraps raw Strava JSON or manual entry)
+marathon:effort-log      workoutId, score (RPE 1–10), notes?
+marathon:flag            reason, severity, raisedAt
+```
+
+`workout.actual` sub-object: `{ activityId?, activityKind, source, deviationStatus, durationMin?, notes? }`.
+`deviationStatus` ∈ `met | partial | swapped | skipped | extra` (see ADR-0003).
+
+### 8.2 Plan-creation flow
+
+1. User submits race + start date + steering context via `/plan/new`.
+2. `create-plan-shim.ts` (ZFC IO only) creates `marathon:race`, `marathon:training-plan` (shell — no workouts yet), and `marathon:plan-context`, then enqueues `backfill_strava` + `generate_plan` in sequence.
+3. `backfill-strava.ts` fetches all Strava activities since `startDate` and writes them as `marathon:strava-activity` issues (idempotent by `activityId`).
+4. `generate_plan` Claude session reads plan-context, reads templates via `list_templates`/`read_template`, picks the closest fit, and populates the plan via `create_week_block` + `create_workout` MCP calls.
+
+### 8.3 Activity reconciliation flow
+
+On every Strava webhook delivery (and on manual add/delete/reassign):
+
+1. `process_activity` Claude session finds the workout matching the activity's local date.
+2. Calls `set_workout_actual` with `deviationStatus` per `claude.md` rules.
+3. For `swapped` or `skipped`, adjusts rest-of-current-week + next-week workouts via `update_workout` (scope: day+0 to day+14 only).
+4. Calls `flag_overtraining` if overreach heuristics apply.
+
+### 8.4 Daily re-evaluation
+
+`daily_reeval` Claude session (triggered by launchd at 06:00 or manually):
+
+- Re-reads plan-context (may have changed since last run).
+- Surveys last 7 days of workouts and activities.
+- Adjusts rest-of-current-week + next-week workouts if constraints have changed (new injury, schedule shift).
+- Scope: day+0 to day+14 only. Full re-plan is out of scope for this task.
+
+### 8.5 Deviation status state diagram
+
+```
+(no actual) ──── Strava activity arrives or manual add ──→ met | partial | swapped | extra
+(no actual) ──── date passes with no activity ───────────→ skipped
+met | partial | swapped | skipped | extra ─── manual delete ──→ (no actual, completed: false)
+any ─── manual reassign ──→ re-runs reconciliation ──→ new status
+```
+
 ## 7. Explicit non-goals (for now)
 
 Telegram bot, `--build` SWE-persona mode, JWT auth layer, Dolt-branch-based test
