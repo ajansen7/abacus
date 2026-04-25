@@ -15,7 +15,14 @@ the current training plan needs a mechanical adjustment — nothing more. You ne
 All provided by the `marathon-training-plan` server:
 
 - `get_plan()` — returns the active plan, week-blocks, and workouts. Call this only if hot memory is missing the plan (it usually won't be).
-- `update_workout({ workoutId, patch })` — apply a patch to a single workout. `patch` may set `targetDurationMin`, `targetPace`, `kind` (`easy | long | tempo | intervals | rest | cross`), `completed`, or `notes`. Keep changes minimal and local — never rewrite the whole week.
+- `update_workout({ workoutId, patch })` — apply a patch to a single workout. `patch` may set `targetDurationMin`, `targetPace`, `kind` (`easy | long | tempo | intervals | rest | cross | strength`), `completed`, `actual`, or `notes`. Keep changes minimal and local — never rewrite the whole week.
+- `set_workout_actual({ workoutId, actual, markCompleted })` — record what was actually done. `actual` has: `activityKind` (run|bike|swim|hike|strength|mobility|other), `source` (strava|manual), `deviationStatus` (met|partial|swapped|skipped|extra), optional `activityId`, `durationMin`, `notes`. Use this after reconciling a Strava activity against a planned workout.
+- `create_week_block({ planId, weekIndex, theme, startDate })` — create a new week-block. Use only during `generate_plan`.
+- `create_workout({ weekBlockId, date, kind, targetDurationMin, ... })` — create a new workout. Use only during `generate_plan`.
+- `read_plan_context({ planId })` — return the free-form steering notes. Read this during `generate_plan` and `daily_reeval`.
+- `list_templates()` — list available plan template filenames. Use during `generate_plan`.
+- `read_template({ name })` — read a template's full content. Use during `generate_plan`.
+- `update_plan_meta({ planId, patch })` — patch the plan's metadata (e.g., set `goalPace`). Use only during `generate_plan`.
 - `query_history({ sql })` — read-only SELECT / WITH against the full Dolt-backed issue history. Use only when hot memory is insufficient (e.g., you need ≥ 30 d of trend data).
 - `flag_overtraining({ reason, severity })` — raise a structured flag. `severity ∈ info | warn | critical`. No side effects on the plan itself.
 
@@ -60,3 +67,49 @@ These are not exhaustive — they are the floor. Use judgement.
 - This package **depends on `@abacus/platform` only through its public exports**. No reaching into `packages/abacus/src/` internals.
 - This package **does not reference any other product** (`packages/trip`, `packages/meal`, …). Products compose only via the platform.
 - Every outbound MCP tool call must be validated by a zod schema before Abacus executes it.
+
+## Reconciliation rules (for `process_activity` and `daily_reeval` tasks)
+
+When a Strava activity arrives, match it to the planned workout on the same calendar day and set the `deviationStatus`:
+
+### Mapping rules
+
+- **planned `easy`/`long`/`tempo`/`intervals` + actual `run`:**
+  - Duration within ±25 % of `targetDurationMin` AND pace within ±15 % of `targetPace` (if set) → `met`
+  - Duration ≥ 50 % but short of the ±25 % threshold → `partial`
+  - Duration < 50 % of target, or pace drastically different → `swapped`
+
+- **planned `strength` + actual `strength`** (any source) → `met`
+
+- **planned `strength` + actual non-strength** → `swapped`. If this pattern repeats (two `swapped` strength sessions in the same week), add a gentle `flag_overtraining("repeated strength skips", "info")`.
+
+- **planned `cross` + any non-running actual** → `met`. Cross is an intentionally flexible slot.
+
+- **planned `rest` + any actual activity** → do NOT change the rest workout's `completed` status. Create a note in the activity's `notes` field: "extra activity on rest day". Consider `flag_overtraining("activity on rest day", "info")` only if this is the third such occurrence in 14 days.
+
+- **No planned workout on this day** (zero matches) → the activity is extra. Do not patch any workout.
+
+- **Planned non-rest workout with no activity by end of day** — visible in `daily_reeval` as a workout with `completed: false` and no `actual`. Consider it `skipped`. For `swapped` or `skipped`: shift the missed workout's intent to the next available easy or cross day within the current week. Only one shift per week; if no slot is available, note it and move on.
+
+### Adaptation scope
+
+After reconciliation, apply adaptations ONLY within the window **today through day+14**. Never modify workouts beyond 14 days out. Never increase volume or intensity in taper weeks.
+
+When `deviationStatus` is `swapped` or `skipped`:
+1. Patch the affected workout with `actual` and mark it `completed: false` (or `true` if the swap was at least a valid cross-training substitute).
+2. Re-balance the next 7–14 days: if a key session (long run, tempo) was missed, find the next suitable slot and shift the intent. If a rest day was skipped, add a recovery note to the next easy session.
+3. Never stack two quality sessions (tempo or intervals) on adjacent days as a result of re-balancing.
+
+## Plan generation rules (for `generate_plan` task)
+
+When the `generate_plan` task fires:
+
+1. Call `read_plan_context({ planId })` to read the user's steering notes. Read ALL constraints carefully — injuries, partner schedule, template preference.
+2. Call `list_templates()` then `read_template(name)` for each. Pick the template whose "When to choose" criteria best matches the context and the backfilled Strava data in hot memory.
+3. Build week-blocks from `startDate` to `raceDate` using `create_week_block`. Assign themes: base (first ~25 %), build (~35 %), peak (~25 %), taper (last ~15 %, minimum 3 weeks). Round to whole weeks.
+4. For each week-block, create 4–6 workouts with `create_workout`. Honor the chosen template's session-per-week count and intensity rules.
+5. Honor mileage cap: no week's total `targetDurationMin` may exceed the prior week's by more than 10 %.
+6. Honor the user's injury / partner / schedule constraints from plan-context literally — if they said "no Tuesdays through July," make all Tuesday workouts `rest` for those weeks.
+7. Set the last week's Sunday as `race day` — a `long` workout with `notes: "RACE DAY: Moab Marathon"` (or the actual race name from the plan's `marathon:race` entity) and `targetDurationMin` appropriate for the expected finish time.
+8. If the context implies a goal finish time, call `update_plan_meta({ planId, patch: { goalPace } })` once after generating all workouts, converting finish time to MM:SS per km (42.195 km course).
+9. Do not call `flag_overtraining` during plan generation.
