@@ -6,6 +6,8 @@ import type { SseBus } from './sse.js';
 import type { Tmux } from './tmux.js';
 import { Watchdog, type WatchdogArm, type WatchdogReason } from './watchdog.js';
 import type { AgentTask } from './types.js';
+import { trace, context, SpanStatusCode, type Span } from '@opentelemetry/api';
+import { tracer, withSpan, withTraceparent } from './otel.js';
 
 export interface DispatcherDeps {
   queue: Queue;
@@ -92,45 +94,85 @@ export class Dispatcher {
     this.scheduleTick();
   }
 
+  /**
+   * Synchronous-ish setup phase. Returns once the tmux session is spawned and
+   * watchdog is armed; the long poll for completion runs detached in the
+   * background so the tick loop can claim the next task. The umbrella
+   * `task.settled` span lives across that detached lifetime — started here,
+   * ended in `awaitCompletion`.
+   */
   private async launch(task: AgentTask): Promise<void> {
-    const session = task.id.startsWith('abacus-') ? task.id : `abacus-${task.id}`;
-    const logsDir = join(this.runtimeDir, 'logs');
-    const jobsDir = join(this.runtimeDir, 'jobs', task.id);
-    await mkdir(logsDir, { recursive: true });
-    await mkdir(jobsDir, { recursive: true });
-    const logFile = join(logsDir, `${task.id}.log`);
-    const exitFile = join(jobsDir, 'exit.code');
+    await withTraceparent(task.traceparent, async () => {
+      const settledSpan = tracer().startSpan('task.settled', {
+        attributes: {
+          'abacus.task_id': task.id,
+          'abacus.product': task.product,
+          'abacus.kind': task.kind,
+        },
+      });
+      const settledCtx = trace.setSpan(context.active(), settledSpan);
+      try {
+        await context.with(settledCtx, async () => {
+          const session = task.id.startsWith('abacus-') ? task.id : `abacus-${task.id}`;
+          const logsDir = join(this.runtimeDir, 'logs');
+          const jobsDir = join(this.runtimeDir, 'jobs', task.id);
+          await mkdir(logsDir, { recursive: true });
+          await mkdir(jobsDir, { recursive: true });
+          const logFile = join(logsDir, `${task.id}.log`);
+          const exitFile = join(jobsDir, 'exit.code');
 
-    const prepared = await this.runner.prepare({
-      taskId: task.id,
-      taskDir: jobsDir,
-      logFile,
-      exitFile,
-      product: task.product,
-      kind: task.kind,
-      payload: task.payload,
-    });
+          const prepared = await withSpan(
+            'runner.prepare',
+            { 'abacus.runner': this.runner.name, 'abacus.task_id': task.id },
+            () =>
+              this.runner.prepare({
+                taskId: task.id,
+                taskDir: jobsDir,
+                logFile,
+                exitFile,
+                product: task.product,
+                kind: task.kind,
+                payload: task.payload,
+              }),
+          );
 
-    await this.tmux.spawn({
-      session,
-      cwd: prepared.cwd,
-      logFile,
-      command: prepared.command,
-    });
-    await this.queue.markStarted(task.id, session);
-    this.sse.publish(task.product, {
-      type: 'TASK_STARTED',
-      taskId: task.id,
-      tmuxSession: session,
-    });
+          await withSpan(
+            'tmux.spawned',
+            { 'abacus.task_id': task.id, 'abacus.tmux_session': session },
+            () =>
+              this.tmux.spawn({
+                session,
+                cwd: prepared.cwd,
+                logFile,
+                command: prepared.command,
+              }),
+          );
+          await this.queue.markStarted(task.id, session);
+          this.sse.publish(task.product, {
+            type: 'TASK_STARTED',
+            taskId: task.id,
+            tmuxSession: session,
+          });
 
-    const arm = this.watchdog.arm({
-      maxWallclockMs: this.maxWallclockMs,
-      onBreach: (reason) => this.handleBreach(task, session, reason),
-    });
-    this.active.set(task.id, arm);
+          const arm = this.watchdog.arm({
+            maxWallclockMs: this.maxWallclockMs,
+            onBreach: (reason) => this.handleBreach(task, session, reason, settledSpan),
+          });
+          this.active.set(task.id, arm);
 
-    void this.awaitCompletion(task, session, exitFile, arm);
+          // Detached: the dispatcher tick must continue claiming new tasks.
+          // The settled span is ended inside awaitCompletion.
+          void context.with(settledCtx, () =>
+            this.awaitCompletion(task, session, exitFile, arm, settledSpan),
+          );
+        });
+      } catch (err) {
+        settledSpan.recordException(err as Error);
+        settledSpan.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error).message });
+        settledSpan.end();
+        throw err;
+      }
+    });
   }
 
   private async awaitCompletion(
@@ -138,6 +180,7 @@ export class Dispatcher {
     session: string,
     exitFile: string,
     arm: WatchdogArm,
+    settledSpan: Span,
   ): Promise<void> {
     let sessionMissingSince: number | null = null;
     const graceMs = Math.max(2 * this.pollIntervalMs, 2000);
@@ -148,9 +191,11 @@ export class Dispatcher {
         arm.cancel();
         this.active.delete(task.id);
         await this.tmux.kill(session);
+        settledSpan.setAttribute('abacus.exit_code', Number.isFinite(code) ? code : -1);
         if (code === 0) {
           await this.queue.markCompleted(task.id);
           this.sse.publish(task.product, { type: 'TASK_COMPLETE', taskId: task.id });
+          settledSpan.setAttribute('abacus.outcome', 'completed');
         } else {
           const reason = `runner_exit_${Number.isFinite(code) ? code : 'unknown'}`;
           await this.queue.markFailed(task.id, reason);
@@ -159,7 +204,11 @@ export class Dispatcher {
             taskId: task.id,
             reason,
           });
+          settledSpan.setAttribute('abacus.outcome', 'failed');
+          settledSpan.setAttribute('abacus.failure_reason', reason);
+          settledSpan.setStatus({ code: SpanStatusCode.ERROR, message: reason });
         }
+        settledSpan.end();
         return;
       }
       const alive = await this.tmux.exists(session);
@@ -175,6 +224,10 @@ export class Dispatcher {
             taskId: task.id,
             reason,
           });
+          settledSpan.setAttribute('abacus.outcome', 'failed');
+          settledSpan.setAttribute('abacus.failure_reason', reason);
+          settledSpan.setStatus({ code: SpanStatusCode.ERROR, message: reason });
+          settledSpan.end();
           return;
         }
       } else {
@@ -185,12 +238,15 @@ export class Dispatcher {
         t.unref();
       });
     }
+    settledSpan.setAttribute('abacus.outcome', 'aborted');
+    settledSpan.end();
   }
 
   private async handleBreach(
     task: AgentTask,
     session: string,
     reason: WatchdogReason,
+    settledSpan: Span,
   ): Promise<void> {
     if (!this.active.has(task.id)) return;
     this.active.delete(task.id);
@@ -201,5 +257,9 @@ export class Dispatcher {
       taskId: task.id,
       reason,
     });
+    settledSpan.setAttribute('abacus.outcome', 'failed');
+    settledSpan.setAttribute('abacus.failure_reason', reason);
+    settledSpan.setStatus({ code: SpanStatusCode.ERROR, message: reason });
+    settledSpan.end();
   }
 }

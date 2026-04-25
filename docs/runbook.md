@@ -101,6 +101,7 @@ pnpm --filter @abacus/platform smoke          # M1 — server + dispatcher + tmu
 pnpm --filter @abacus/platform smoke:m2       # M2 — discovery + memory + cold-query guard
 pnpm --filter @abacus/platform smoke:m3       # M3 — ClaudeRunner.prepare wiring (no real claude spawn)
 pnpm --filter @abacus/platform smoke:webhook  # M3b — webhook shim: handshake + enqueue + rejections
+pnpm --filter @abacus/platform smoke:m5       # M5 — drop-in product smoke (tmp packages dir) + OTel trace tree
 ```
 
 `smoke` boots the server in-process, subscribes to SSE, POSTs `/api/_test/invoke`,
@@ -199,6 +200,46 @@ Manual kill:
 ```bash
 tmux kill-session -t abacus-<task_id>
 bd update <task_id> --set-metadata status=failed --set-metadata failure_reason=manual
+```
+
+## Observability — OTel traces
+
+The platform emits OpenTelemetry spans for every task lifecycle. The default
+exporter is a zero-infra JSONL file, written to:
+
+```
+runtime/otel/spans-<startedAt>.jsonl
+```
+
+…where `<startedAt>` is the platform-process start ISO timestamp. Each line is
+one span (name, traceId, spanId, parentSpanId, durationNs, attributes, events).
+
+Span tree per task (single trace, propagated via the `traceparent` field on the
+task's Beads metadata):
+
+```
+task.received  (server / queue boundary)
+└── task.settled  (dispatcher umbrella, ends on terminal status)
+    ├── runner.prepare  (DummyRunner / ClaudeRunner.prepare)
+    │   └── memory.loaded  (when ClaudeRunner is active)
+    └── tmux.spawned
+```
+
+`abacus.outcome` on `task.settled` is one of `completed | failed | aborted`.
+`abacus.failure_reason` is set on failures (e.g., `wallclock_exceeded`,
+`runner_exit_<n>`, `runner_crashed`).
+
+To export to a real OTel backend (Jaeger, Tempo, otelcol, etc.) instead of (or
+in addition to) the JSONL file, set `OTEL_EXPORTER_OTLP_ENDPOINT` in
+`.env.local` — the OTLP HTTP exporter is added automatically when the env var
+is non-empty. To turn OTel off entirely, set `OTEL_DISABLE=1`.
+
+Example: tail today's spans for the last `task.settled` outcome:
+
+```bash
+ls -t runtime/otel/spans-*.jsonl | head -1 | xargs jq -c '
+  select(.name=="task.settled") |
+  {task: .attributes["abacus.task_id"], outcome: .attributes["abacus.outcome"], ms: (.durationNs/1e6)}'
 ```
 
 ## References

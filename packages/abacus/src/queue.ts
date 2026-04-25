@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Beads, BdIssue } from './beads.js';
 import { AgentTask, TaskStatus } from './types.js';
+import { currentTraceparent, withSpan } from './otel.js';
 
 const QUEUE_LABEL = 'platform:agent-task';
 
@@ -16,6 +17,7 @@ const TaskMeta = z
     started_at: z.string().optional(),
     finished_at: z.string().optional(),
     failure_reason: z.string().optional(),
+    traceparent: z.string().optional(),
   })
   .passthrough();
 
@@ -33,6 +35,7 @@ function issueToTask(issue: BdIssue): AgentTask {
     startedAt: meta.started_at,
     finishedAt: meta.finished_at,
     failureReason: meta.failure_reason,
+    traceparent: meta.traceparent,
   });
 }
 
@@ -68,26 +71,43 @@ export class Queue {
     payload: unknown;
     dedupeKey?: string;
   }): Promise<EnqueueResult> {
-    if (params.dedupeKey) {
-      const hit = await this.findDedupe(params.product, params.kind, params.dedupeKey);
-      if (hit) return { task: hit, deduped: true };
-    }
+    return withSpan(
+      'task.received',
+      {
+        'abacus.product': params.product,
+        'abacus.kind': params.kind,
+        'abacus.dedupe_key': params.dedupeKey ?? '',
+      },
+      async (span) => {
+        if (params.dedupeKey) {
+          const hit = await this.findDedupe(params.product, params.kind, params.dedupeKey);
+          if (hit) {
+            span.setAttribute('abacus.deduped', true);
+            span.setAttribute('abacus.task_id', hit.id);
+            return { task: hit, deduped: true };
+          }
+        }
 
-    const createdAt = new Date().toISOString();
-    const meta = {
-      product: params.product,
-      kind: params.kind,
-      payload: params.payload,
-      status: 'pending' as TaskStatus,
-      created_at: createdAt,
-      ...(params.dedupeKey ? { dedupe_key: params.dedupeKey } : {}),
-    };
-    const id = await this.beads.create({
-      title: `${params.product}/${params.kind}`,
-      labels: [QUEUE_LABEL, `product:${params.product}`, `kind:${params.kind}`],
-      metadata: meta,
-    });
-    return { task: await this.get(id), deduped: false };
+        const createdAt = new Date().toISOString();
+        const traceparent = currentTraceparent();
+        const meta = {
+          product: params.product,
+          kind: params.kind,
+          payload: params.payload,
+          status: 'pending' as TaskStatus,
+          created_at: createdAt,
+          ...(params.dedupeKey ? { dedupe_key: params.dedupeKey } : {}),
+          ...(traceparent ? { traceparent } : {}),
+        };
+        const id = await this.beads.create({
+          title: `${params.product}/${params.kind}`,
+          labels: [QUEUE_LABEL, `product:${params.product}`, `kind:${params.kind}`],
+          metadata: meta,
+        });
+        span.setAttribute('abacus.task_id', id);
+        return { task: await this.get(id), deduped: false };
+      },
+    );
   }
 
   private async findDedupe(

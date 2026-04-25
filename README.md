@@ -24,7 +24,7 @@ Adding a product is by convention: create a `packages/<name>/` directory with
 hot-memory policy), and `.platform-denylist`. The platform discovers it
 automatically — no code changes to `packages/abacus/`.
 
-## Current status — M4 product-scoped dashboard live, round-trip verified
+## Current status — M5 OTel + drop-in product smoke landed
 
 The platform now ships with a real `ClaudeRunner` (set `ABACUS_RUNNER=claude` in env;
 the dummy runner remains the default for tests). For each task the runner resolves
@@ -41,9 +41,12 @@ Marathon (product #1) ships its first ZFC scripts and MCP server:
 
 **Smoke tests**: `pnpm --filter @abacus/platform smoke` (M1 server end-to-end),
 `pnpm --filter @abacus/platform smoke:m2` (discovery + memory + cold-query guard),
-`pnpm --filter @abacus/platform smoke:m3` (ClaudeRunner.prepare wiring), and
+`pnpm --filter @abacus/platform smoke:m3` (ClaudeRunner.prepare wiring),
 `pnpm --filter @abacus/platform smoke:webhook` (webhook shim: handshake, enqueue,
-rejection paths against the real marathon Strava shim — no live Strava call).
+rejection paths against the real marathon Strava shim — no live Strava call), and
+`pnpm --filter @abacus/platform smoke:m5` (drop-in product smoke: synthesizes a
+throwaway product in a tmpdir, boots the platform, runs end-to-end, asserts a
+single OTel trace with `task.received → task.settled → {runner.prepare, tmux.spawned}`).
 
 **M3b — Strava OAuth + webhook subscription + shim dispatch** is now wired:
 `scripts/strava-onboard.ts` runs the OAuth handshake against a local callback
@@ -63,8 +66,21 @@ continue to flow through `POST /api/:product/invoke`. The dashboard subscribes t
 `/api/:product/events` via SSE and refetches state on `TASK_COMPLETE`/`TASK_FAILED`.
 See `docs/adr/0002-product-scoped-dashboards-and-state-shim.md`.
 
+**M5 — observability + drop-in product smoke** landed. The platform emits OTel
+spans for the full task lifecycle (`task.received` → `task.settled` →
+{`runner.prepare`, `memory.loaded`, `tmux.spawned`}); trace context propagates
+across the queue boundary via a `traceparent` field stamped into the task's
+Beads metadata. A zero-infra JSONL file exporter writes to
+`runtime/otel/spans-<ts>.jsonl` by default; setting
+`OTEL_EXPORTER_OTLP_ENDPOINT` adds OTLP HTTP export for Jaeger/Tempo. The
+drop-in product smoke (`smoke:m5`) creates a synthetic product in a tmpdir,
+boots the platform against it (no edits to `packages/abacus/`), runs a task
+end-to-end, and asserts the trace tree is intact — proving the
+platform/product separation holds in practice.
+
 **Still deferred**: watchdog token-cap parsing from `claude -p` per-turn JSON
-usage counter. M5 (OTel + drop-in product smoke) follows.
+usage counter; per-tool `agent.tool_call` child spans (claude output streaming
+needed first).
 
 ## Repo layout
 

@@ -19,9 +19,11 @@ import { ClaudeRunner, DummyRunner, type Runner } from './runner.js';
 import { ProductRegistry } from './product-registry.js';
 import { Dispatcher } from './dispatcher.js';
 import { buildServer } from './server.js';
+import { initOtel } from './otel.js';
 
 export async function bootstrap(): Promise<void> {
   const config = loadConfig();
+  const otel = initOtel({ runtimeDir: config.ABACUS_RUNTIME_DIR });
   const beads = new Beads();
   const queue = new Queue(beads, config.ABACUS_DEDUPE_TTL_SECONDS);
   const tmux = new Tmux();
@@ -69,6 +71,7 @@ export async function bootstrap(): Promise<void> {
       msg: 'abacus.ready',
       host: config.ABACUS_HOST,
       port: config.ABACUS_PORT,
+      otelSpans: otel.spansFile,
     }),
   );
 
@@ -76,6 +79,7 @@ export async function bootstrap(): Promise<void> {
     await dispatcher.stop();
     sse.closeAll();
     await app.close();
+    await otel.shutdown();
   };
   process.on('SIGINT', () => void shutdown().then(() => process.exit(0)));
   process.on('SIGTERM', () => void shutdown().then(() => process.exit(0)));

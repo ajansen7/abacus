@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import type { Beads, BdIssue } from './beads.js';
 import type { HotMemoryPolicy, ProductManifest } from './types.js';
+import { withSpan } from './otel.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -25,42 +26,54 @@ export async function loadHotMemory(
   manifest: ProductManifest,
   now: Date = new Date(),
 ): Promise<HotMemorySnapshot> {
-  const policy: HotMemoryPolicy = manifest.hotMemory;
-  if (policy.types.length === 0) {
-    return {
-      product,
-      windowDays: policy.windowDays,
-      generatedAt: now.toISOString(),
-      items: [],
-    };
-  }
+  return withSpan(
+    'memory.loaded',
+    {
+      'abacus.product': product,
+      'abacus.hot_memory.window_days': manifest.hotMemory.windowDays,
+      'abacus.hot_memory.types': manifest.hotMemory.types.join(','),
+    },
+    async (span) => {
+      const policy: HotMemoryPolicy = manifest.hotMemory;
+      if (policy.types.length === 0) {
+        span.setAttribute('abacus.hot_memory.items', 0);
+        return {
+          product,
+          windowDays: policy.windowDays,
+          generatedAt: now.toISOString(),
+          items: [],
+        };
+      }
 
-  const issues = await beads.list(policy.types);
-  const windowCutoffMs = now.getTime() - policy.windowDays * 24 * 60 * 60 * 1000;
-  const wantOpen = policy.statusFilter.includes('open');
-  const wantClosed = policy.statusFilter.includes('closed');
+      const issues = await beads.list(policy.types);
+      const windowCutoffMs = now.getTime() - policy.windowDays * 24 * 60 * 60 * 1000;
+      const wantOpen = policy.statusFilter.includes('open');
+      const wantClosed = policy.statusFilter.includes('closed');
 
-  const filtered: BdIssue[] = [];
-  for (const issue of issues) {
-    const status = (issue.status ?? 'open').toLowerCase();
-    const isClosed = status === 'closed' || status === 'resolved';
-    if (isClosed && !wantClosed) continue;
-    if (!isClosed && !wantOpen) continue;
-    const updatedAt = issue.updated_at ?? issue.created_at;
-    if (updatedAt) {
-      const ms = Date.parse(updatedAt);
-      if (Number.isFinite(ms) && ms < windowCutoffMs) continue;
-    }
-    filtered.push(issue);
-    if (filtered.length >= policy.maxItems) break;
-  }
+      const filtered: BdIssue[] = [];
+      for (const issue of issues) {
+        const status = (issue.status ?? 'open').toLowerCase();
+        const isClosed = status === 'closed' || status === 'resolved';
+        if (isClosed && !wantClosed) continue;
+        if (!isClosed && !wantOpen) continue;
+        const updatedAt = issue.updated_at ?? issue.created_at;
+        if (updatedAt) {
+          const ms = Date.parse(updatedAt);
+          if (Number.isFinite(ms) && ms < windowCutoffMs) continue;
+        }
+        filtered.push(issue);
+        if (filtered.length >= policy.maxItems) break;
+      }
 
-  return {
-    product,
-    windowDays: policy.windowDays,
-    generatedAt: now.toISOString(),
-    items: filtered,
-  };
+      span.setAttribute('abacus.hot_memory.items', filtered.length);
+      return {
+        product,
+        windowDays: policy.windowDays,
+        generatedAt: now.toISOString(),
+        items: filtered,
+      };
+    },
+  );
 }
 
 export interface ColdMemoryOptions {

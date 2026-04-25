@@ -42,6 +42,7 @@ export const AgentTask = z.object({
   startedAt: z.string().optional(),
   finishedAt: z.string().optional(),
   failureReason: z.string().optional(),
+  traceparent: z.string().optional(),
 });
 export type AgentTask = z.infer<typeof AgentTask>;
 

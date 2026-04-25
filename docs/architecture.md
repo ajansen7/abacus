@@ -68,7 +68,7 @@ The boundary is load-bearing and enforced by CI:
 | `webhook-shim.ts`     | Spawns a product's webhook shim subprocess, parses JSON action, returns it      | M3b ✅ |
 | `state-shim.ts`       | Spawns a product's state-read shim subprocess, returns raw JSON                 | M4 ✅  |
 | `secrets.ts`          | Webhook-token verifier (env lives in `config.ts`)                               | later  |
-| `otel.ts`       | OpenTelemetry bootstrap                                                               | M5     |
+| `otel.ts`             | OTel bootstrap (JSONL file exporter + optional OTLP HTTP) + `withSpan`/traceparent helpers | M5 ✅  |
 
 ### Marathon product (`packages/marathon/`, M3)
 
@@ -122,7 +122,7 @@ only at the boundary and applies a row limit; the agent gets raw rows back.
 - `abacus` (Fastify) — port 3001 — accepts REST/webhook/SSE traffic, manages the task queue and tmux sessions. CORS for dashboards is controlled by `ABACUS_CORS_ORIGINS` (default: `http://localhost:3000,http://127.0.0.1:3000`).
 - Product dashboards (Next.js) — port 3000 — SSR/CSR UIs, one per product, packaged at `packages/<product>/dashboard/`.
 - Agent sessions — detached `tmux` named `abacus-<task_id>`, running `claude -p --output-format json --mcp-config <resolved>`. Logs piped to `runtime/logs/<task_id>.log`.
-- OTel exporter — local OTLP endpoint (port 4318) or file exporter for PoC.
+- OTel — JSONL spans written to `runtime/otel/spans-<ts>.jsonl` (always on); OTLP HTTP exporter added when `OTEL_EXPORTER_OTLP_ENDPOINT` is set. Trace context propagates `server → dispatcher` via a `traceparent` field on the queue row's Beads metadata.
 
 ## References
 
