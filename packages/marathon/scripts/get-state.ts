@@ -49,16 +49,16 @@ function byUpdatedDesc(a: { updated_at?: string | undefined }, b: { updated_at?:
 async function main(): Promise<void> {
   const beads = new Beads();
 
-  const [plans, weekBlocks, workouts, efforts, activities, flags, races, planContexts] = await Promise.all([
-    beads.list([TYPE_TRAINING_PLAN]),
-    beads.list([TYPE_WEEK_BLOCK]),
-    beads.list([TYPE_WORKOUT]),
-    beads.list([TYPE_EFFORT_LOG]),
-    beads.list([TYPE_STRAVA_ACTIVITY]),
-    beads.list([TYPE_FLAG]),
-    beads.list([TYPE_RACE]),
-    beads.list([TYPE_PLAN_CONTEXT]),
-  ]);
+  const allIssues = await beads.list();
+
+  const plans = allIssues.filter((i) => i.labels.includes(TYPE_TRAINING_PLAN));
+  const weekBlocks = allIssues.filter((i) => i.labels.includes(TYPE_WEEK_BLOCK));
+  const workouts = allIssues.filter((i) => i.labels.includes(TYPE_WORKOUT));
+  const efforts = allIssues.filter((i) => i.labels.includes(TYPE_EFFORT_LOG));
+  const activities = allIssues.filter((i) => i.labels.includes(TYPE_STRAVA_ACTIVITY));
+  const flags = allIssues.filter((i) => i.labels.includes(TYPE_FLAG));
+  const races = allIssues.filter((i) => i.labels.includes(TYPE_RACE));
+  const planContexts = allIssues.filter((i) => i.labels.includes(TYPE_PLAN_CONTEXT));
 
   // Pick the most recently updated open plan as the "active" plan.
   const plan =

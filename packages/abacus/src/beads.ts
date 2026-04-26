@@ -66,8 +66,12 @@ export class Beads {
     return z.object({ id: z.string() }).passthrough().parse(parsed).id;
   }
 
-  async list(labels: string[]): Promise<BdIssue[]> {
-    const out = (await this.run(['--json', 'list', '--label-any', labels.join(',')])).trim();
+  async list(labels?: string[]): Promise<BdIssue[]> {
+    const args = ['--json', 'list'];
+    if (labels && labels.length > 0) {
+      args.push('--label-any', labels.join(','));
+    }
+    const out = (await this.run(args)).trim();
     if (!out) return [];
     const parsed: unknown = JSON.parse(out);
     const arr = z.array(BdIssueRaw).safeParse(parsed);
