@@ -67,7 +67,7 @@ export class Beads {
   }
 
   async list(labels?: string[]): Promise<BdIssue[]> {
-    const args = ['--json', 'list'];
+    const args = ['--json', 'list', '--limit', '0'];
     if (labels && labels.length > 0) {
       args.push('--label-any', labels.join(','));
     }
