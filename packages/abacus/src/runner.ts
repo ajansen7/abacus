@@ -180,6 +180,7 @@ export class ClaudeRunner implements Runner {
       `( cd ${shEscape(productDir)} && \\`,
       `  ${shEscape(claudeBin)} -p \\`,
       '    --output-format json \\',
+      '    --dangerously-skip-permissions \\',
       `    --mcp-config ${shEscape(files.mcpConfigFile)} \\`,
       `    --append-system-prompt "$(cat ${shEscape(files.systemFile)})" \\`,
       `    < ${shEscape(files.promptFile)} )`,
