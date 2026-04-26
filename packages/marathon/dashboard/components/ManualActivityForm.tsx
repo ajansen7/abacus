@@ -13,7 +13,7 @@ export function ManualActivityForm({ onAdded }: { onAdded: () => void }) {
     const notesRaw = f.get('notes') as string;
     const distanceM = distanceRaw ? Number(distanceRaw) : undefined;
     const notes = notesRaw || undefined;
-    await webhookPost('manual_activity', {
+    await webhookPost('manual-activity', {
       op: 'add',
       activity: {
         date: String(f.get('date')),

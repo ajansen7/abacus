@@ -19,10 +19,10 @@
     "strava": {
       "preScript": "tsx scripts/strava-webhook-shim.ts"
     },
-    "manual_activity": {
+    "manual-activity": {
       "preScript": "tsx scripts/manual-activity-shim.ts"
     },
-    "update_plan_context": {
+    "update-plan-context": {
       "preScript": "tsx scripts/update-plan-context-shim.ts"
     }
   },

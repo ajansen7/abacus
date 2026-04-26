@@ -23,7 +23,7 @@ export default function PlanContextPage() {
     setSaved(false);
     setError(null);
     try {
-      await webhookPost('update_plan_context', { notes });
+      await webhookPost('update-plan-context', { notes });
       setSaved(true);
     } catch (err) {
       setError((err as Error).message);

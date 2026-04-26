@@ -10,7 +10,7 @@ interface Props {
 export function ActivityRow({ activity, onChange }: Props) {
   async function onDelete() {
     if (!confirm('Remove this activity from the plan?')) return;
-    await webhookPost('manual_activity', { op: 'delete', activityIssueId: activity.id });
+    await webhookPost('manual-activity', { op: 'delete', activityIssueId: activity.id });
     onChange();
   }
 
