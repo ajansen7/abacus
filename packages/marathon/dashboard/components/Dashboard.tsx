@@ -245,7 +245,7 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
           ) : state.plan ? (
             <h1 className="text-lg font-semibold text-zinc-100">
               {state.plan.raceDate
-                ? `Race ${state.plan.raceDate} @ ${state.plan.goalPace ?? '—'}/km`
+                ? `Race ${state.plan.raceDate} @ ${state.plan.goalPace ?? '—'}/mi`
                 : 'No active plan'}
             </h1>
           ) : (

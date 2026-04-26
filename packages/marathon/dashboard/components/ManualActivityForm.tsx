@@ -9,9 +9,9 @@ export function ManualActivityForm({ onAdded }: { onAdded: () => void }) {
     e.preventDefault();
     setSubmitting(true);
     const f = new FormData(e.currentTarget);
-    const distanceRaw = f.get('distanceM');
+    const distanceRaw = f.get('distanceMi');
     const notesRaw = f.get('notes') as string;
-    const distanceM = distanceRaw ? Number(distanceRaw) : undefined;
+    const distanceM = distanceRaw ? Math.round(Number(distanceRaw) * 1609.34) : undefined;
     const notes = notesRaw || undefined;
     await webhookPost('manual-activity', {
       op: 'add',
@@ -64,10 +64,11 @@ export function ManualActivityForm({ onAdded }: { onAdded: () => void }) {
           />
         </label>
         <label className="flex flex-col gap-1 text-xs text-zinc-400">
-          Distance (m, optional)
+          Distance (mi, optional)
           <input
-            name="distanceM"
+            name="distanceMi"
             type="number"
+            step="0.01"
             min={0}
             className="rounded border border-border bg-zinc-800 px-2 py-1 text-xs text-zinc-100"
           />
