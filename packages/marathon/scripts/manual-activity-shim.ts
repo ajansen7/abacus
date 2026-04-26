@@ -1,7 +1,8 @@
 #!/usr/bin/env tsx
 import { z } from 'zod';
 import { Beads, Queue } from '@abacus/platform';
-import { IsoDate, TYPE_STRAVA_ACTIVITY, TYPE_WORKOUT } from '../lib/types.js';
+import { IsoDate, TYPE_STRAVA_ACTIVITY, TYPE_WEEK_BLOCK, TYPE_WORKOUT } from '../lib/types.js';
+import { mapStravaTypeToActualKind } from '../lib/activity-mapping.js';
 
 // --- Output helpers (match strava-webhook-shim.ts pattern) ---
 type Action =
@@ -29,7 +30,18 @@ const ReassignOp = z.object({
   activityIssueId: z.string().min(1),
   workoutId: z.string().min(1),
 });
-export const ManualActivityRequest = z.discriminatedUnion('op', [AddOp, DeleteOp, ReassignOp]);
+const InsertAndMatchOp = z.object({
+  op: z.literal('insert-and-match'),
+  activityIssueId: z.string().min(1),
+  weekBlockId: z.string().min(1),
+  date: IsoDate,
+});
+export const ManualActivityRequest = z.discriminatedUnion('op', [
+  AddOp,
+  DeleteOp,
+  ReassignOp,
+  InsertAndMatchOp,
+]);
 export type ManualActivityRequest = z.infer<typeof ManualActivityRequest>;
 
 // --- Core logic (exported for testing) ---
@@ -100,26 +112,103 @@ export async function manualActivityCore(req: ManualActivityRequest, { beads, qu
     return { closed: req.activityIssueId };
   }
 
-  // reassign
-  const workout = await beads.show(req.workoutId);
-  if (!workout.labels.includes(TYPE_WORKOUT)) {
-    throw new Error(`not a workout: ${req.workoutId}`);
+  if (req.op === 'reassign') {
+    const workout = await beads.show(req.workoutId);
+    if (!workout.labels.includes(TYPE_WORKOUT)) {
+      throw new Error(`not a workout: ${req.workoutId}`);
+    }
+    const activity = await beads.show(req.activityIssueId);
+    if (!activity.labels.includes(TYPE_STRAVA_ACTIVITY)) {
+      throw new Error(`not a strava-activity: ${req.activityIssueId}`);
+    }
+
+    // Set actual directly so the workout is immediately marked as matched.
+    const actMeta = (activity.metadata ?? {}) as Record<string, any>;
+    const actData = (actMeta.activity ?? {}) as Record<string, any>;
+    const sportType = String(actData.type ?? actData.sport_type ?? '');
+    const activityKind = mapStravaTypeToActualKind(sportType);
+    const durationMin = actData.moving_time ? Math.round(Number(actData.moving_time) / 60) : undefined;
+
+    await beads.updateMetadata(req.workoutId, {
+      actual: {
+        activityId: req.activityIssueId,
+        activityKind,
+        source: actMeta.source ?? 'strava',
+        deviationStatus: 'met',
+        ...(durationMin !== undefined ? { durationMin } : {}),
+      },
+      completed: true,
+    });
+
+    // Enqueue reeval so the agent can adjust if needed
+    await queue.enqueue({
+      product: 'marathon',
+      kind: 'daily_reeval',
+      payload: {
+        reconcileWorkoutId: req.workoutId,
+        forceActivityId: req.activityIssueId,
+        reason: 'manual-reassign',
+      },
+      dedupeKey: `manual-reassign:${req.workoutId}:${req.activityIssueId}`,
+    });
+    return { reassigned: { workoutId: req.workoutId, activityIssueId: req.activityIssueId } };
+  }
+
+  // insert-and-match: create a new workout on a date with no existing workout,
+  // assign the activity as its actual, and trigger rebalancing.
+  const weekBlock = await beads.show(req.weekBlockId);
+  if (!weekBlock.labels.includes(TYPE_WEEK_BLOCK)) {
+    throw new Error(`not a week-block: ${req.weekBlockId}`);
   }
   const activity = await beads.show(req.activityIssueId);
   if (!activity.labels.includes(TYPE_STRAVA_ACTIVITY)) {
     throw new Error(`not a strava-activity: ${req.activityIssueId}`);
   }
+  const actMeta = (activity.metadata ?? {}) as Record<string, any>;
+  const actData = (actMeta.activity ?? {}) as Record<string, any>;
+  const sportType = String(actData.type ?? actData.sport_type ?? '');
+  const activityKind = mapStravaTypeToActualKind(sportType);
+  const durationMin = actData.moving_time ? Math.round(Number(actData.moving_time) / 60) : 30;
+
+  // Map activity kind → workout kind (best-effort, not a judgment call)
+  const kindMap: Record<string, string> = {
+    run: 'easy', bike: 'cross', swim: 'cross', hike: 'cross',
+    strength: 'strength', mobility: 'cross', other: 'cross',
+  };
+  const workoutKind = kindMap[activityKind] ?? 'cross';
+
+  const workoutId = await beads.create({
+    title: `workout ${req.date} ${workoutKind} (inserted)`,
+    labels: [TYPE_WORKOUT],
+    metadata: {
+      weekBlockId: req.weekBlockId,
+      date: req.date,
+      kind: workoutKind,
+      targetDurationMin: durationMin,
+      completed: true,
+      actual: {
+        activityId: req.activityIssueId,
+        activityKind,
+        source: actMeta.source ?? 'strava',
+        deviationStatus: 'extra',
+        durationMin,
+      },
+    },
+  });
+
+  // Enqueue daily_reeval so the agent can rebalance the rest of the week + next week
   await queue.enqueue({
     product: 'marathon',
-    kind: 'process_activity',
+    kind: 'daily_reeval',
     payload: {
-      reconcileWorkoutId: req.workoutId,
-      forceActivityId: req.activityIssueId,
-      reason: 'manual-reassign',
+      reason: 'insert-and-match',
+      insertedWorkoutId: workoutId,
+      activityIssueId: req.activityIssueId,
     },
-    dedupeKey: `manual-reassign:${req.workoutId}:${req.activityIssueId}`,
+    dedupeKey: `insert-match:${req.activityIssueId}`,
   });
-  return { reassigned: { workoutId: req.workoutId, activityIssueId: req.activityIssueId } };
+
+  return { inserted: { workoutId, activityIssueId: req.activityIssueId } };
 }
 
 // --- CLI entry point ---

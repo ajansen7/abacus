@@ -29,9 +29,18 @@ in the way.
 
 | Route | Purpose |
 | ----- | ------- |
-| `/` | Active plan overview: race header, current-week workouts (with deviation badges), activity log, flags |
+| `/` | Plan overview (all 28 weeks as compact rows with workout dots, expandable), unmatched activity matching, activity log, flags |
 | `/plan/new` | Race + start date + steering context form → kicks off plan creation |
 | `/plan/context` | Edit the free-form steering notes for the active plan |
+
+### Plan overview
+
+The main dashboard now shows every week of the plan in a compact row with
+color-coded dots per workout kind (emerald=easy, indigo=long, amber=tempo, etc.).
+The current week auto-scrolls into view and is highlighted with a green "now"
+badge. Past weeks are dimmed with a completion percentage. Click any row to
+expand it into full workout tiles showing planned targets and actual activity
+details (name, distance, time, pace) when matched.
 
 ## Plan templates
 
@@ -82,6 +91,18 @@ From the Activity log on the dashboard:
 - **Add** — fill in the "Add manual activity" form at the bottom of the activity log. The
   activity is stored as a `marathon:strava-activity` with `source: 'manual'` and a
   reconciliation pass runs.
+- **Match by date** — from the "Unmatched activities" section, click "Match by date" to
+  propose bulk matches. Activities are joined to workouts by date. For activities on
+  days with no existing workout, a new workout is inserted into the plan (see below).
+
+### Bulk match types
+
+- **Reassign** — activity date matches an existing unmatched workout. The workout's
+  `actual` is set immediately and a `daily_reeval` task is enqueued.
+- **Insert-and-match** — activity date falls within a plan week but has no workout.
+  A new workout is created in the week-block (kind inferred from sport type via
+  `mapStravaTypeToActualKind`), the activity is set as its `actual`, and a
+  `daily_reeval` task is enqueued so the agent can rebalance subsequent workouts.
 
 Via the API directly:
 
@@ -100,6 +121,11 @@ curl -X POST http://127.0.0.1:3001/api/marathon/webhook/manual_activity \
 curl -X POST http://127.0.0.1:3001/api/marathon/webhook/manual_activity \
   -H 'content-type: application/json' \
   -d '{"op":"reassign","activityIssueId":"<beads-id>","workoutId":"<beads-id>"}'
+
+# Insert a new workout and match an activity to it
+curl -X POST http://127.0.0.1:3001/api/marathon/webhook/manual_activity \
+  -H 'content-type: application/json' \
+  -d '{"op":"insert-and-match","activityIssueId":"<beads-id>","weekBlockId":"<beads-id>","date":"2026-04-25"}'
 ```
 
 ## Plan-context editing
@@ -133,8 +159,21 @@ marathon:flag            — overtraining or concern flag
 ## Development
 
 ```bash
+# Dev mode (tsx watch + Next.js dev — hot reload, slower)
+bash scripts/dev-up.sh
+
+# Production mode (builds first, then runs compiled — much faster)
+bash scripts/prod-up.sh
+
+# Production mode with existing build artifacts (skip rebuild)
+bash scripts/prod-up.sh --skip-build
+```
+
+Or run pieces individually:
+
+```bash
 pnpm --filter @abacus-products/marathon test       # run vitest
 pnpm --filter @abacus-products/marathon typecheck  # tsc --noEmit
 ```
 
-See `docs/runbook.md` for bringing the full stack up.
+See `docs/runbook.md` for the full operations guide.

@@ -46,11 +46,12 @@ Marathon (`packages/marathon/`) is the first product and the platform's PoC.
 - `scripts/strava-onboard.ts` — one-shot OAuth handshake; writes `STRAVA_REFRESH_TOKEN` to `.env.local`.
 - `scripts/strava-subscribe.ts` — create / list / delete Strava webhook push-subscriptions.
 - `scripts/strava-webhook-shim.ts` — handles the `hub.challenge` GET handshake and transforms POSTs into `enqueue(process_activity)` actions with a dedupe key.
-- `scripts/fetch-and-store-strava.ts` — mechanical: refresh OAuth, fetch activity, write a `marathon:strava-activity` issue. Has `STRAVA_OFFLINE=1` mode for tests.
+- `scripts/fetch-and-store-strava.ts` — mechanical: refresh OAuth, fetch activity, write a `marathon:strava-activity` issue. Has `STRAVA_OFFLINE=1` mode for tests. Skips Strava fetch for reassign/reconcile payloads.
 - `scripts/ingest-perceived-effort.ts` — webhook handler for the slider; writes a `marathon:effort-log` issue.
+- `scripts/manual-activity-shim.ts` — handles add/delete/reassign/insert-and-match operations for activities. Insert-and-match creates new workouts for gap days and triggers agent rebalancing.
 - `scripts/get-state.ts` — state shim returning the active plan, 14-day window of workouts, recent efforts/activities/flags.
 - `mcp-servers/training-plan/` — exposes `get_plan`, `update_workout`, `query_history`, `flag_overtraining` to the agent.
-- `dashboard/` — Next.js mobile-friendly UI: current week, perceived-effort slider, live task stream.
+- `dashboard/` — Next.js UI: full 28-week plan overview with expandable workout tiles, bulk activity matching (reassign + insert-and-match), perceived-effort slider, live task stream.
 
 ## Repo layout
 
@@ -99,6 +100,18 @@ Starts the platform on `:3001`, the marathon dashboard on `:3000`, a `cloudflare
 quick tunnel, and registers a Strava webhook subscription pointing at the tunnel.
 Cleans up the subscription + child processes on `Ctrl-C`. Flags: `--no-tunnel`,
 `--no-dashboard`. Per-process logs land in `runtime/dev-logs/`.
+
+### Production mode (faster)
+
+```bash
+bash scripts/prod-up.sh
+```
+
+Builds the platform (tsc) and dashboard (next build) first, then runs the
+compiled artifacts instead of tsx-watch + Next.js dev mode. Noticeably faster
+page loads and interaction. Use `--skip-build` to reuse existing build artifacts.
+Same flags as `dev-up.sh` (`--no-tunnel`, `--no-dashboard`). Logs in
+`runtime/prod-logs/`.
 
 ### Or start pieces individually
 

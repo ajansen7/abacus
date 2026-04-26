@@ -18,7 +18,16 @@ import { createStravaClient } from '../lib/strava-client.js';
 async function main(): Promise<void> {
   const raw = process.env.ABACUS_PAYLOAD;
   if (!raw) throw new Error('fetch-and-store-strava: ABACUS_PAYLOAD env not set');
-  const webhook = StravaWebhookPayload.parse(JSON.parse(raw));
+  const parsed = JSON.parse(raw) as Record<string, unknown>;
+
+  // Manual reassign / reconcile payloads already have the activity in Beads —
+  // nothing to fetch. Exit cleanly so the agent prompt still runs.
+  if (parsed.reconcileWorkoutId || parsed.forceActivityId || parsed.manualActivityIssueId) {
+    console.log('[fetch-strava] skip — reconcile/reassign payload, activity already stored');
+    return;
+  }
+
+  const webhook = StravaWebhookPayload.parse(parsed);
 
   const offline = process.env.STRAVA_OFFLINE === '1';
 

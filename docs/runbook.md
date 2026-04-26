@@ -36,6 +36,23 @@ Flags:
 `dev-up.sh` refuses to start if `:3001` (or `:3000` when the dashboard is on) is
 already bound, so it never silently fights an existing process.
 
+## Running in production mode (faster)
+
+```bash
+bash scripts/prod-up.sh
+```
+
+Same structure as `dev-up.sh` but builds the platform (`tsc`) and dashboard
+(`next build`) before running. Uses `node dist/main.js` + `next start` instead
+of tsx watch + Next.js dev mode. Page loads and interactions are noticeably
+faster.
+
+Additional flag:
+
+- `--skip-build` — reuse existing build artifacts (useful for quick restarts)
+
+Logs land in `runtime/prod-logs/{platform,dashboard,cloudflared}.log`.
+
 ## Running pieces individually
 
 ### Platform

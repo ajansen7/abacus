@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { WorkoutTile } from './WorkoutTile';
+import { PlanOverview } from './PlanOverview';
 import { TaskStream } from './TaskStream';
 import { ActivityRow } from './ActivityRow';
-import { eventsUrl, getState, type FullActivityEntry, type MarathonState } from '@/lib/abacus';
+import { eventsUrl, getState, webhookPost, type FullActivityEntry, type MarathonState, type Workout } from '@/lib/abacus';
 
 type LifecycleEvent =
   | { type: 'TASK_QUEUED'; taskId: string; kind: string }
@@ -39,12 +40,96 @@ function unmatchedActivities(
   return activities.filter((a) => !matchedIds.has(a.id));
 }
 
+interface ProposedMatch {
+  type: 'reassign';
+  activity: FullActivityEntry;
+  workout: Workout;
+  weekIndex: number;
+}
+
+interface GapMatch {
+  type: 'insert';
+  activity: FullActivityEntry;
+  weekBlockId: string;
+  weekIndex: number;
+  date: string;
+}
+
+type MatchResult = ProposedMatch | GapMatch;
+
+function computeDateMatches(
+  unmatched: FullActivityEntry[],
+  weeks: MarathonState['weeks'],
+): MatchResult[] {
+  // Build a map of date → available workouts (no actual yet)
+  const dateToWorkouts = new Map<string, { workout: Workout; weekIndex: number }[]>();
+  for (const week of weeks) {
+    for (const wo of week.workouts) {
+      if (wo.actual || wo.completed) continue;
+      const date = wo.date;
+      if (!date) continue;
+      const arr = dateToWorkouts.get(date) ?? [];
+      arr.push({ workout: wo, weekIndex: week.index });
+      dateToWorkouts.set(date, arr);
+    }
+  }
+
+  // Build a set of dates that already have workouts (any, including completed)
+  const datesWithWorkouts = new Set<string>();
+  for (const week of weeks) {
+    for (const wo of week.workouts) {
+      if (wo.date) datesWithWorkouts.add(wo.date);
+    }
+  }
+
+  // Build a map of date → week (for gap detection)
+  const dateToWeek = new Map<string, { weekBlockId: string; weekIndex: number }>();
+  for (const week of weeks) {
+    const start = new Date(`${week.startDate}T00:00:00`);
+    for (let d = 0; d < 7; d++) {
+      const dt = new Date(start);
+      dt.setDate(dt.getDate() + d);
+      const iso = dt.toISOString().slice(0, 10);
+      dateToWeek.set(iso, { weekBlockId: week.id, weekIndex: week.index });
+    }
+  }
+
+  const results: MatchResult[] = [];
+  const usedWorkoutIds = new Set<string>();
+
+  for (const activity of unmatched) {
+    const actDate = activity.startDateLocal?.slice(0, 10);
+    if (!actDate) continue;
+
+    // Try direct match first
+    const candidates = dateToWorkouts.get(actDate);
+    if (candidates) {
+      const available = candidates.find((c) => !usedWorkoutIds.has(c.workout.id));
+      if (available) {
+        usedWorkoutIds.add(available.workout.id);
+        results.push({ type: 'reassign', activity, workout: available.workout, weekIndex: available.weekIndex });
+        continue;
+      }
+    }
+
+    // No existing workout on this date — check if date falls within a plan week
+    const week = dateToWeek.get(actDate);
+    if (week) {
+      results.push({ type: 'insert', activity, weekBlockId: week.weekBlockId, weekIndex: week.weekIndex, date: actDate });
+    }
+  }
+
+  return results;
+}
+
 export function Dashboard({ initial }: { initial: MarathonState | null }) {
   const [state, setState] = useState<MarathonState | null>(initial);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<LiveTask[]>([]);
   const [connected, setConnected] = useState(false);
   const [showUnmatched, setShowUnmatched] = useState(false);
+  const [matchPreview, setMatchPreview] = useState<MatchResult[] | null>(null);
+  const [matching, setMatching] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
   const refresh = useCallback(async () => {
@@ -107,14 +192,42 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
     );
   }
 
-  const currentWeek =
-    state.currentWeekIndex !== null
-      ? state.weeks.find((w) => w.index === state.currentWeekIndex) ?? null
-      : state.weeks[0] ?? null;
-
   const daysToRace = daysUntil(state.race?.date ?? state.plan?.raceDate);
   const activities = state.allActivities ?? state.recentActivities;
   const unmatched = unmatchedActivities(activities, state.weeks);
+
+  function onMatchByDate() {
+    const proposed = computeDateMatches(unmatched, state!.weeks);
+    setMatchPreview(proposed);
+  }
+
+  async function onConfirmMatch() {
+    if (!matchPreview || matchPreview.length === 0) return;
+    setMatching(true);
+    for (const m of matchPreview) {
+      try {
+        if (m.type === 'reassign') {
+          await webhookPost('manual-activity', {
+            op: 'reassign',
+            activityIssueId: m.activity.id,
+            workoutId: m.workout.id,
+          });
+        } else {
+          await webhookPost('manual-activity', {
+            op: 'insert-and-match',
+            activityIssueId: m.activity.id,
+            weekBlockId: m.weekBlockId,
+            date: m.date,
+          });
+        }
+      } catch (err) {
+        console.error('match failed', m.activity.id, err);
+      }
+    }
+    setMatching(false);
+    setMatchPreview(null);
+    void refresh();
+  }
 
   return (
     <main className="mx-auto max-w-2xl p-4 sm:p-6">
@@ -168,27 +281,16 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
         </div>
       </header>
 
-      {/* Current week workouts — each tile shows planned + actual inline */}
-      {currentWeek ? (
-        <section className="mb-6">
-          <div className="mb-2 flex items-center justify-between text-xs text-muted">
-            <span>
-              Week {currentWeek.index + 1} · {currentWeek.theme}
-            </span>
-            <span>start {currentWeek.startDate}</span>
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {currentWeek.workouts.map((w) => (
-              <WorkoutTile
-                key={w.id}
-                workout={w}
-                isToday={w.date === state.todayIso}
-                onEffortLogged={() => void refresh()}
-              />
-            ))}
-          </div>
-        </section>
-      ) : state.plan && state.weeks.length === 0 ? (
+      {/* Full plan overview — every week as a compact row, click to expand */}
+      {state.weeks.length > 0 ? (
+        <PlanOverview
+          weeks={state.weeks}
+          currentWeekIndex={state.currentWeekIndex}
+          todayIso={state.todayIso}
+          onEffortLogged={() => void refresh()}
+          activities={activities}
+        />
+      ) : state.plan ? (
         <section className="mb-6">
           <div className="rounded-lg border border-border bg-panel p-4 text-sm text-muted">
             Plan is generating — check agent activity below.
@@ -229,14 +331,85 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
       {/* Unmatched / extra activities (didn't map to a planned workout) */}
       {unmatched.length > 0 ? (
         <section className="mb-6">
-          <button
-            type="button"
-            onClick={() => setShowUnmatched((v) => !v)}
-            className="mb-2 flex items-center gap-1 text-xs uppercase tracking-widest text-muted hover:text-zinc-300"
-          >
-            <span>Unmatched activities ({unmatched.length})</span>
-            <span>{showUnmatched ? '▲' : '▼'}</span>
-          </button>
+          <div className="mb-2 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setShowUnmatched((v) => !v)}
+              className="flex items-center gap-1 text-xs uppercase tracking-widest text-muted hover:text-zinc-300"
+            >
+              <span>Unmatched activities ({unmatched.length})</span>
+              <span>{showUnmatched ? '▲' : '▼'}</span>
+            </button>
+            {showUnmatched && (
+              <button
+                type="button"
+                onClick={onMatchByDate}
+                disabled={matching}
+                className="rounded-md border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-medium text-indigo-300 hover:bg-indigo-500/20 disabled:opacity-50"
+              >
+                Match by date
+              </button>
+            )}
+          </div>
+
+          {/* Match preview modal */}
+          {matchPreview && (
+            <div className="mb-3 rounded-lg border border-indigo-500/30 bg-indigo-500/5 p-3">
+              <div className="mb-2 text-xs font-medium text-indigo-300">
+                {matchPreview.length === 0
+                  ? 'No activities fall within the plan date range.'
+                  : (() => {
+                      const reassigns = matchPreview.filter((m) => m.type === 'reassign').length;
+                      const inserts = matchPreview.filter((m) => m.type === 'insert').length;
+                      const parts: string[] = [];
+                      if (reassigns) parts.push(`${reassigns} match existing workout${reassigns > 1 ? 's' : ''}`);
+                      if (inserts) parts.push(`${inserts} will insert new workout${inserts > 1 ? 's' : ''}`);
+                      return parts.join(', ') + (inserts ? ' (agent will rebalance):' : ':');
+                    })()}
+              </div>
+              {matchPreview.length > 0 && (
+                <div className="mb-3 flex flex-col gap-1">
+                  {matchPreview.map((m) => (
+                    <div key={m.activity.id} className="flex items-center gap-2 text-xs">
+                      <span className="min-w-0 truncate text-zinc-300">
+                        {m.activity.name || m.activity.sportType || '(activity)'}
+                      </span>
+                      <span className="shrink-0 text-zinc-600">→</span>
+                      {m.type === 'reassign' ? (
+                        <span className="shrink-0 text-zinc-400">
+                          W{m.weekIndex + 1} · {m.workout.kind ?? 'easy'} · {m.workout.date}
+                        </span>
+                      ) : (
+                        <span className="shrink-0 text-amber-400">
+                          W{m.weekIndex + 1} · {m.date} · new workout (insert)
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="flex gap-2">
+                {matchPreview.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={onConfirmMatch}
+                    disabled={matching}
+                    className="rounded bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+                  >
+                    {matching ? 'Matching…' : 'Confirm'}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setMatchPreview(null)}
+                  className="text-xs text-zinc-600 hover:text-zinc-400"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
+
           {showUnmatched ? (
             <div className="flex flex-col gap-2">
               {unmatched.map((a) => (

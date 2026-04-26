@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import type { Workout } from '@/lib/abacus';
+import type { Workout, FullActivityEntry } from '@/lib/abacus';
 import { webhookPost } from '@/lib/abacus';
 import { EffortSlider } from './EffortSlider';
 
@@ -33,9 +33,11 @@ interface Props {
   workout: Workout;
   isToday: boolean;
   onEffortLogged: () => void;
+  /** All activities for looking up matched activity details. */
+  activities?: FullActivityEntry[];
 }
 
-export function WorkoutTile({ workout, isToday, onEffortLogged }: Props) {
+export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Props) {
   const [open, setOpen] = useState(isToday);
   const [addingManual, setAddingManual] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -106,37 +108,98 @@ export function WorkoutTile({ workout, isToday, onEffortLogged }: Props) {
       {workout.notes ? <div className="mt-2 text-xs text-muted">{workout.notes}</div> : null}
 
       {/* Actual section — inline, always visible when present */}
-      {actual ? (
-        <div className="mt-3 border-t border-border pt-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="text-zinc-500">actual:</span>
-              <span className={`font-medium ${KIND_COLOR[actual.activityKind] ? `inline-block rounded border px-1.5 py-0.5 ${KIND_COLOR[actual.activityKind]}` : 'text-zinc-300'}`}>
-                {actual.activityKind}
-              </span>
-              {actual.durationMin ? (
-                <span className="text-zinc-400">{actual.durationMin} min</span>
-              ) : null}
-              <span className={`font-medium ${DEVIATION_COLOR[actual.deviationStatus] ?? 'text-zinc-400'}`}>
-                {actual.deviationStatus}
-              </span>
-              {actual.source === 'manual' ? (
-                <span className="text-zinc-600">· manual</span>
-              ) : null}
-            </div>
-            {actual.activityId ? (
-              <button
-                type="button"
-                onClick={onRemoveActual}
-                className="shrink-0 text-xs text-zinc-600 hover:text-rose-400"
-              >
-                remove
-              </button>
-            ) : null}
+      {actual ? (() => {
+        // Look up the full activity for rich display
+        const matchedActivity = actual.activityId && activities
+          ? activities.find((a) => a.id === actual.activityId)
+          : undefined;
+        const distKm = matchedActivity?.distance
+          ? (matchedActivity.distance / 1000).toFixed(1)
+          : null;
+        const paceMinKm = matchedActivity?.distance && matchedActivity?.movingTime && matchedActivity.distance > 0
+          ? (() => {
+              const totalMin = matchedActivity.movingTime! / 60;
+              const km = matchedActivity.distance! / 1000;
+              const pace = totalMin / km;
+              const m = Math.floor(pace);
+              const s = Math.round((pace - m) * 60);
+              return `${m}:${String(s).padStart(2, '0')}`;
+            })()
+          : null;
+
+        return (
+          <div className="mt-3 border-t border-border pt-3">
+            {/* Activity name + key stats */}
+            {matchedActivity ? (
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-zinc-200 truncate">
+                    {matchedActivity.name || matchedActivity.sportType || 'Activity'}
+                  </span>
+                  {actual.activityId ? (
+                    <button
+                      type="button"
+                      onClick={onRemoveActual}
+                      className="shrink-0 text-xs text-zinc-600 hover:text-rose-400"
+                    >
+                      remove
+                    </button>
+                  ) : null}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className={`inline-block rounded border px-1.5 py-0.5 ${KIND_COLOR[actual.activityKind] ?? 'text-zinc-300 border-zinc-600'}`}>
+                    {actual.activityKind}
+                  </span>
+                  <span className={`font-medium ${DEVIATION_COLOR[actual.deviationStatus] ?? 'text-zinc-400'}`}>
+                    {actual.deviationStatus}
+                  </span>
+                  {actual.durationMin ? (
+                    <span className="text-zinc-400">{actual.durationMin} min</span>
+                  ) : null}
+                  {distKm ? (
+                    <span className="text-zinc-400">{distKm} km</span>
+                  ) : null}
+                  {paceMinKm ? (
+                    <span className="text-zinc-500">{paceMinKm}/km</span>
+                  ) : null}
+                  {actual.source === 'manual' ? (
+                    <span className="text-zinc-600">manual</span>
+                  ) : null}
+                </div>
+              </div>
+            ) : (
+              /* Fallback: no activity lookup available */
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                  <span className="text-zinc-500">actual:</span>
+                  <span className={`font-medium ${KIND_COLOR[actual.activityKind] ? `inline-block rounded border px-1.5 py-0.5 ${KIND_COLOR[actual.activityKind]}` : 'text-zinc-300'}`}>
+                    {actual.activityKind}
+                  </span>
+                  {actual.durationMin ? (
+                    <span className="text-zinc-400">{actual.durationMin} min</span>
+                  ) : null}
+                  <span className={`font-medium ${DEVIATION_COLOR[actual.deviationStatus] ?? 'text-zinc-400'}`}>
+                    {actual.deviationStatus}
+                  </span>
+                  {actual.source === 'manual' ? (
+                    <span className="text-zinc-600">· manual</span>
+                  ) : null}
+                </div>
+                {actual.activityId ? (
+                  <button
+                    type="button"
+                    onClick={onRemoveActual}
+                    className="shrink-0 text-xs text-zinc-600 hover:text-rose-400"
+                  >
+                    remove
+                  </button>
+                ) : null}
+              </div>
+            )}
+            {actual.notes ? <div className="mt-1 text-xs text-zinc-600">{actual.notes}</div> : null}
           </div>
-          {actual.notes ? <div className="mt-1 text-xs text-zinc-600">{actual.notes}</div> : null}
-        </div>
-      ) : workout.completed ? (
+        );
+      })() : workout.completed ? (
         <div className="mt-2 text-xs text-emerald-400">completed</div>
       ) : null}
 
