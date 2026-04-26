@@ -17,41 +17,41 @@
   },
   "webhooks": {
     "strava": {
-      "preScript": "tsx scripts/strava-webhook-shim.ts"
+      "preScript": "[ -f dist/scripts/strava-webhook-shim.js ] && node dist/scripts/strava-webhook-shim.js || tsx scripts/strava-webhook-shim.ts"
     },
     "manual-activity": {
-      "preScript": "tsx scripts/manual-activity-shim.ts"
+      "preScript": "[ -f dist/scripts/manual-activity-shim.js ] && node dist/scripts/manual-activity-shim.js || tsx scripts/manual-activity-shim.ts"
     },
     "update-plan-context": {
-      "preScript": "tsx scripts/update-plan-context-shim.ts"
+      "preScript": "[ -f dist/scripts/update-plan-context-shim.js ] && node dist/scripts/update-plan-context-shim.js || tsx scripts/update-plan-context-shim.ts"
     }
   },
   "state": {
-    "preScript": "tsx scripts/get-state.ts"
+    "preScript": "[ -f dist/scripts/get-state.js ] && node dist/scripts/get-state.js || tsx scripts/get-state.ts"
   },
   "tasks": {
     "process_activity": {
-      "preScript": "tsx scripts/fetch-and-store-strava.ts",
+      "preScript": "[ -f dist/scripts/fetch-and-store-strava.js ] && node dist/scripts/fetch-and-store-strava.js || tsx scripts/fetch-and-store-strava.ts",
       "prompt": "A new Strava activity was just stored as a `marathon:strava-activity` Beads issue. Task ID: {{taskId}}. Webhook payload: {{payloadJson}}.\n\nHot memory snapshot (open plan, week-blocks, workouts, plan-context, effort logs, recent activities):\n{{hotMemoryJson}}\n\nYour job, in order:\n\n1. **Reconciliation.** Find the workout in hot memory whose `date` matches the activity's local date (YYYY-MM-DD from `start_date_local`). If exactly one workout matches: call `set_workout_actual({workoutId, actual: {activityId, activityKind, source: \"strava\", deviationStatus, durationMin}})` where deviationStatus follows the rules in claude.md. If zero workouts match: this is an \"extra\" activity — do not patch any workout. If multiple workouts match on the same day: pick the one whose `kind` maps closest to the activity's mapped kind, and patch only that one.\n\n2. **Adaptation** (only if the deviation justifies it per claude.md). If reconciliation produced `swapped` or `skipped`, or the effort heuristics in claude.md trigger, call `update_workout` on workouts in the rest of the current week and the next week to re-balance. Do NOT touch workouts further out than 14 days. Do NOT touch peak/taper-week workouts unless directly impacted.\n\n3. **Flagging.** If overreach heuristics apply, call `flag_overtraining` as usual.\n\nUse `query_history` only if hot memory lacks data you need. Exit silently if no action is warranted."
     },
     "log_effort": {
-      "preScript": "tsx scripts/ingest-perceived-effort.ts",
+      "preScript": "[ -f dist/scripts/ingest-perceived-effort.js ] && node dist/scripts/ingest-perceived-effort.js || tsx scripts/ingest-perceived-effort.ts",
       "prompt": "A perceived-effort log was just stored as a `marathon:effort-log` Beads issue. Task ID: {{taskId}}. Payload: {{payloadJson}}.\n\nHot memory snapshot:\n{{hotMemoryJson}}\n\nIf the score is concerning (RPE ≥ 8 on what was meant to be an easy session, or sustained high RPE across the recent window), follow the heuristics in claude.md and either `flag_overtraining` or `update_workout` to back off the next session. If everything is in band, finish without writes."
     },
     "create_plan": {
-      "preScript": "tsx scripts/create-plan-shim.ts",
+      "preScript": "[ -f dist/scripts/create-plan-shim.js ] && node dist/scripts/create-plan-shim.js || tsx scripts/create-plan-shim.ts",
       "prompt": "A new race and plan shell were just created. Task ID: {{taskId}}. Payload: {{payloadJson}}. Hot memory: {{hotMemoryJson}}.\n\nThis task has no agent work — the shim already enqueued backfill_strava and generate_plan as follow-on tasks. Exit silently without writes."
     },
     "backfill_strava": {
-      "preScript": "tsx scripts/backfill-strava.ts",
+      "preScript": "[ -f dist/scripts/backfill-strava.js ] && node dist/scripts/backfill-strava.js || tsx scripts/backfill-strava.ts",
       "prompt": "Historical Strava activities were just imported. Task ID: {{taskId}}. Payload: {{payloadJson}}. Hot memory: {{hotMemoryJson}}.\n\nNo agent action required — generate_plan will see these activities in its hot memory. Exit silently."
     },
     "generate_plan": {
-      "preScript": "tsx scripts/daily-reeval-shim.ts",
+      "preScript": "[ -f dist/scripts/daily-reeval-shim.js ] && node dist/scripts/daily-reeval-shim.js || tsx scripts/daily-reeval-shim.ts",
       "prompt": "A plan shell exists with a race, training-plan record, and plan-context. Task ID: {{taskId}}. Payload: {{payloadJson}}. Hot memory (race, plan, context, recent Strava activity from backfill): {{hotMemoryJson}}.\n\nYour job: build a COMPLETE training plan — every single week from startDate to raceDate. The plan metadata contains `weeks` (the total count). You must call create_week_block once per week and create_workout for every session in every week. Do not stop early. Do not generate a sample or summary.\n\nProcedure:\n1. Call list_templates then read_template for each; pick the best fit based on plan-context notes and backfilled Strava history.\n2. For each week index 0..(weeks-1): call create_week_block with the correct startDate (startDate + weekIndex*7 days), theme, and planId. Then call create_workout for each session that week (typically 4 sessions: easy, long, strength/cross, rest).\n3. After all weeks are created, call update_plan_meta to set goalPace if the user implied a target finish time.\n\nRules from claude.md apply: 10% weekly mileage cap, taper in final 3 weeks (no intensity increases), honor every constraint in plan-context. Make no flag_overtraining calls here — that is for runtime adjustments only."
     },
     "daily_reeval": {
-      "preScript": "tsx scripts/daily-reeval-shim.ts",
+      "preScript": "[ -f dist/scripts/daily-reeval-shim.js ] && node dist/scripts/daily-reeval-shim.js || tsx scripts/daily-reeval-shim.ts",
       "prompt": "Daily plan re-evaluation. Task ID: {{taskId}}. Hot memory: {{hotMemoryJson}}.\n\nRead the plan-context (it may have changed), survey the last 7 days of workouts and activities, and apply any necessary adjustments to the rest-of-current-week + next-week workouts per claude.md. If the plan-context now describes a constraint that wasn't honored in earlier weeks (e.g., new injury, partner availability change), shift the upcoming workouts to comply. Do not touch workouts beyond day+14 in this task. Exit silently if no adjustment is warranted."
     }
   }

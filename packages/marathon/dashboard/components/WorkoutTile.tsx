@@ -50,7 +50,7 @@ export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Pr
     e.preventDefault();
     setSubmitting(true);
     const f = new FormData(e.currentTarget);
-    const distanceRaw = f.get('distanceM');
+    const distanceRaw = f.get('distanceMi');
     const notesRaw = f.get('notes') as string;
     await webhookPost('manual-activity', {
       op: 'add',
@@ -58,7 +58,7 @@ export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Pr
         date: workout.date ?? new Date().toISOString().slice(0, 10),
         type: String(f.get('type')),
         durationMin: Number(f.get('durationMin')),
-        ...(distanceRaw ? { distanceM: Number(distanceRaw) } : {}),
+        ...(distanceRaw ? { distanceM: Math.round(Number(distanceRaw) * 1609.34) } : {}),
         ...(notesRaw ? { notes: notesRaw } : {}),
       },
     });
@@ -90,7 +90,7 @@ export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Pr
             </span>
             <span className="text-zinc-300">
               {workout.targetDurationMin ?? 0} min
-              {workout.targetPace ? ` @ ${workout.targetPace}/km` : ''}
+              {workout.targetPace ? ` @ ${workout.targetPace}/mi` : ''}
             </span>
           </div>
         </div>
@@ -113,17 +113,16 @@ export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Pr
         const matchedActivity = actual.activityId && activities
           ? activities.find((a) => a.id === actual.activityId)
           : undefined;
-        const distKm = matchedActivity?.distance
-          ? (matchedActivity.distance / 1000).toFixed(1)
+        const distMi = matchedActivity?.distance
+          ? (matchedActivity.distance / 1609.34).toFixed(1)
           : null;
-        const paceMinKm = matchedActivity?.distance && matchedActivity?.movingTime && matchedActivity.distance > 0
+        const paceMinMi = matchedActivity?.distance && matchedActivity?.movingTime && matchedActivity.distance > 0
           ? (() => {
-              const totalMin = matchedActivity.movingTime! / 60;
-              const km = matchedActivity.distance! / 1000;
-              const pace = totalMin / km;
-              const m = Math.floor(pace);
-              const s = Math.round((pace - m) * 60);
-              return `${m}:${String(s).padStart(2, '0')}`;
+              const mi = matchedActivity.distance! / 1609.34;
+              const min = matchedActivity.movingTime! / 60;
+              const minutes = Math.floor(min / mi);
+              const seconds = Math.round(((min / mi) - minutes) * 60);
+              return `${minutes}:${seconds.toString().padStart(2, '0')}`;
             })()
           : null;
 
@@ -154,13 +153,12 @@ export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Pr
                     {actual.deviationStatus}
                   </span>
                   {actual.durationMin ? (
-                    <span className="text-zinc-400">{actual.durationMin} min</span>
-                  ) : null}
-                  {distKm ? (
-                    <span className="text-zinc-400">{distKm} km</span>
-                  ) : null}
-                  {paceMinKm ? (
-                    <span className="text-zinc-500">{paceMinKm}/km</span>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-400">
+                      <span>{actual.durationMin} min</span>
+                      {distMi && <span>{distMi} mi</span>}
+                      {paceMinMi && <span>{paceMinMi} /mi</span>}
+                      <span className="text-zinc-500 capitalize">{actual.activityKind ?? actual.kind}</span>
+                    </div>
                   ) : null}
                   {actual.source === 'manual' ? (
                     <span className="text-zinc-600">manual</span>
@@ -244,12 +242,15 @@ export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Pr
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-zinc-400">
-                  Distance (m)
+                  Distance (mi, optional)
                   <input
-                    name="distanceM"
+                    name="distanceMi"
                     type="number"
+                    step="0.01"
                     min={0}
+                    defaultValue={actual?.distanceM ? +(actual.distanceM / 1609.34).toFixed(2) : ''}
                     className="rounded border border-border bg-zinc-800 px-2 py-1 text-xs text-zinc-100"
+                    placeholder="miles"
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-xs text-zinc-400">

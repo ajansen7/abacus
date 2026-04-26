@@ -21,12 +21,12 @@ export function ActivityRow({ activity, onChange }: Props) {
     <div className="flex items-center justify-between rounded-md border border-border bg-panel px-3 py-2 text-sm">
       <div className="flex min-w-0 flex-col">
         <span className="truncate text-zinc-200">
-          {activity.sportType || activity.name || '(activity)'}
+          {activity.name || activity.sportType || '(activity)'}
         </span>
         <span className="text-xs text-muted">
           {dateStr}
           {durationMin !== null ? ` · ${durationMin} min` : ''}
-          {activity.distance ? ` · ${(activity.distance / 1000).toFixed(1)} km` : ''}
+          {activity.distance ? ` · ${(activity.distance / 1609.34).toFixed(1)} mi` : ''}
           {activity.source === 'manual' ? ' · manual' : ''}
         </span>
       </div>

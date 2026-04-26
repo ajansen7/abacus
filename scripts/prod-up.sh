@@ -92,6 +92,9 @@ if [[ "$SKIP_BUILD" -eq 0 ]]; then
   log "building platform…"
   pnpm --filter @abacus/platform build 2>&1 | tail -3
 
+  log "building marathon scripts…"
+  pnpm --filter @abacus-products/marathon build 2>&1 | tail -3
+
   if [[ "$WITH_DASHBOARD" -eq 1 ]]; then
     log "building marathon dashboard…"
     pnpm --filter @abacus-products/marathon-dashboard build 2>&1 | tail -5

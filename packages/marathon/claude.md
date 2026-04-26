@@ -111,5 +111,5 @@ When the `generate_plan` task fires:
 5. Honor mileage cap: no week's total `targetDurationMin` may exceed the prior week's by more than 10 %.
 6. Honor the user's injury / partner / schedule constraints from plan-context literally — if they said "no Tuesdays through July," make all Tuesday workouts `rest` for those weeks.
 7. Set the last week's Sunday as `race day` — a `long` workout with `notes: "RACE DAY: Moab Marathon"` (or the actual race name from the plan's `marathon:race` entity) and `targetDurationMin` appropriate for the expected finish time.
-8. If the context implies a goal finish time, call `update_plan_meta({ planId, patch: { goalPace } })` once after generating all workouts, converting finish time to MM:SS per km (42.195 km course).
+8. If the context implies a goal finish time, call `update_plan_meta({ planId, patch: { goalPace } })` once after generating all workouts, converting finish time to MM:SS per mile (26.2 mile course).
 9. Do not call `flag_overtraining` during plan generation.
