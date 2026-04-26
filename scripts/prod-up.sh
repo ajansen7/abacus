@@ -64,7 +64,10 @@ kill_tree() {
   kill -"$sig" "$pid" 2>/dev/null || true
 }
 
+CLEANED_UP=0
 cleanup() {
+  if [[ "$CLEANED_UP" -eq 1 ]]; then return; fi
+  CLEANED_UP=1
   log "shutting down…"
   if [[ -n "$SUBSCRIPTION_ID" ]]; then
     log "removing Strava subscription $SUBSCRIPTION_ID"
@@ -153,7 +156,7 @@ if [[ "$WITH_TUNNEL" -eq 1 ]]; then
       CALLBACK="${TUNNEL_URL}/api/marathon/webhook/strava"
       log "registering Strava subscription → $CALLBACK"
       SUBSCRIPTION_ID=$(pnpm --filter @abacus-products/marathon exec tsx scripts/strava-subscribe.ts \
-        --callback "$CALLBACK" 2>/dev/null | grep -oE '[0-9]+' | head -1 || true)
+        --callback "$CALLBACK" 2>/dev/null | grep -oE 'id=[0-9]+' | cut -d= -f2 | head -1 || true)
       if [[ -n "$SUBSCRIPTION_ID" ]]; then
         log "Strava subscription ID: $SUBSCRIPTION_ID"
       else

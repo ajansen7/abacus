@@ -57,7 +57,10 @@ kill_tree() {
   kill -"$sig" "$pid" 2>/dev/null || true
 }
 
+CLEANED_UP=0
 cleanup() {
+  if [[ "$CLEANED_UP" -eq 1 ]]; then return; fi
+  CLEANED_UP=1
   trap - EXIT INT TERM
   echo ""
   log "shutting down..."
