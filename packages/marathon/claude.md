@@ -42,8 +42,9 @@ that is already there.
 These are not exhaustive — they are the floor. Use judgement.
 
 - **Single-session overreach** — a session run > 20 % faster than its `targetPace` for > 50 % of its duration while the user's `effort-log.score` is ≥ 8 → `flag_overtraining("single-session overreach", "warn")` and downshift tomorrow's workout if it was scheduled ≥ `easy` (i.e., tempo/intervals/long → easy or shorter easy).
-- **Sustained high effort** — three or more `effort-log.score ≥ 8` readings in the last 7 days, on sessions meant to be easy → `flag_overtraining("sustained easy-day RPE", "critical")` and convert the next non-rest workout to `rest` or `easy` 30 min.
-- **High single-session RPE on an easy day** — `effort-log.score ≥ 8` reported for a `kind:easy` session → downshift the next workout one tier (long → tempo-lite, tempo → easy, intervals → easy). This is a back-off, not a flag, unless it is the second such reading this week.
+- **Sustained high effort** — three or more `effort-log.score >= 8` readings or `sufferScore > 100` in the last 7 days, on sessions meant to be easy → `flag_overtraining("sustained easy-day RPE", "critical")` and convert the next non-rest workout to `rest` or `easy` 30 min.
+- **High single-session RPE on an easy day** — `effort-log.score >= 8`, `sufferScore > 80`, or `averageHeartrate` in Zone 4+ reported for a `kind:easy` session → downshift the next workout one tier (long → tempo-lite, tempo → easy, intervals → easy). This is a back-off, not a flag, unless it is the second such reading this week.
+- **Elevation-adjusted effort** — if an easy run has `totalElevationGain > 150m` (approx 500ft) per 10k of distance, consider it equivalent to a harder session for fatigue purposes, even if pace was slow.
 - **Mileage jump** — never let this week's total planned minutes exceed last week's by more than 10 %. If an adjustment would push it over, either cap the change or spread the load.
 - **Taper respect** — during `theme:taper` weeks, never increase duration or intensity of any workout. Back-offs only.
 - **All-green** — if none of the above apply, finish without writes. It is correct and desirable to make no tool calls on ordinary days.
@@ -74,10 +75,11 @@ When a Strava activity arrives, match it to the planned workout on the same cale
 
 ### Mapping rules
 
-- **planned `easy`/`long`/`tempo`/`intervals` + actual `run`:**
+- **planned `easy`/`long`/`tempo`/`intervals` + actual `run` or `TrailRun`:**
   - Duration within ±25 % of `targetDurationMin` AND pace within ±15 % of `targetPace` (if set) → `met`
-  - Duration ≥ 50 % but short of the ±25 % threshold → `partial`
-  - Duration < 50 % of target, or pace drastically different → `swapped`
+  - For trail runs (`sportType: TrailRun` or `totalElevationGain > 200m`), ignore the pace constraint if it was missed, and grade solely on duration.
+  - Duration >= 50 % but short of the ±25 % threshold → `partial`
+  - Duration < 50 % of target, or pace drastically different (on flat terrain) → `swapped`
 
 - **planned `strength` + actual `strength`** (any source) → `met`
 

@@ -152,6 +152,12 @@ async function main(): Promise<void> {
         distance: activity.distance,
         movingTime: activity.moving_time,
         startDateLocal: activity.start_date_local,
+        totalElevationGain: activity.total_elevation_gain,
+        averageHeartrate: activity.average_heartrate,
+        maxHeartrate: activity.max_heartrate,
+        sufferScore: activity.suffer_score,
+        averageCadence: activity.average_cadence,
+        averageSpeed: activity.average_speed,
       };
     });
 
@@ -171,6 +177,14 @@ async function main(): Promise<void> {
       distance: activity.distance,
       movingTime: activity.moving_time,
       startDateLocal: activity.start_date_local,
+      totalElevationGain: activity.total_elevation_gain,
+      elevHigh: activity.elev_high,
+      elevLow: activity.elev_low,
+      averageHeartrate: activity.average_heartrate,
+      maxHeartrate: activity.max_heartrate,
+      sufferScore: activity.suffer_score,
+      averageCadence: activity.average_cadence,
+      averageSpeed: activity.average_speed,
     };
   });
 

@@ -1,8 +1,53 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { WorkoutTile } from './WorkoutTile';
-import type { WeekBlock, FullActivityEntry } from '@/lib/abacus';
+import { DayCard } from './DayCard';
+import { webhookPost, type WeekBlock, type FullActivityEntry } from '@/lib/abacus';
+
+function CoachMessageForm() {
+  const [msg, setMsg] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function onSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!msg.trim()) return;
+    setSubmitting(true);
+    setDone(false);
+    try {
+      await webhookPost('coach-message', { message: msg });
+      setMsg('');
+      setDone(true);
+      setTimeout(() => setDone(false), 3000);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <form onSubmit={onSubmit} className="mt-4 flex gap-2 rounded-lg border border-indigo-500/20 bg-indigo-500/5 p-3">
+      <div className="flex-1">
+        <div className="mb-1 text-xs font-medium text-indigo-300">Talk to coach</div>
+        <input
+          type="text"
+          value={msg}
+          onChange={(e) => setMsg(e.target.value)}
+          placeholder="e.g., 'Knee hurts, shift load to weekend' or 'Can't run Tuesday'"
+          className="w-full rounded border border-border bg-zinc-800/80 px-2.5 py-1.5 text-xs text-zinc-200 outline-none focus:border-indigo-500/50"
+        />
+      </div>
+      <button
+        type="submit"
+        disabled={submitting || !msg.trim()}
+        className="mt-5 shrink-0 self-start rounded bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+      >
+        {submitting ? 'Sending…' : done ? 'Sent ✓' : 'Ask coach'}
+      </button>
+    </form>
+  );
+}
 
 /* ── Color mapping — matches WorkoutTile KIND_COLOR palette ── */
 const DOT_COLOR: Record<string, string> = {
@@ -192,16 +237,26 @@ export function PlanOverview({ weeks, currentWeekIndex, todayIso, onEffortLogged
                 {isExpanded && (
                   <div className="border-t border-border px-3 pb-3 pt-3">
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {week.workouts.map((w) => (
-                        <WorkoutTile
-                          key={w.id}
-                          workout={w}
-                          isToday={w.date === todayIso}
-                          onEffortLogged={onEffortLogged}
-                          activities={activities}
-                        />
-                      ))}
+                      {Array.from({ length: 7 }).map((_, i) => {
+                        const d = new Date(`${week.startDate}T00:00:00`);
+                        d.setDate(d.getDate() + i);
+                        const dateStr = d.toISOString().slice(0, 10);
+                        const workout = week.workouts.find((w) => w.date === dateStr);
+                        const dayActivities = activities?.filter((a) => a.startDateLocal?.startsWith(dateStr)) ?? [];
+                        
+                        return (
+                          <DayCard
+                            key={dateStr}
+                            date={dateStr}
+                            workout={workout}
+                            activities={dayActivities}
+                            isToday={dateStr === todayIso}
+                            onEffortLogged={onEffortLogged}
+                          />
+                        );
+                      })}
                     </div>
+                    <CoachMessageForm />
                   </div>
                 )}
               </div>

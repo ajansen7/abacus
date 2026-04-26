@@ -47,15 +47,7 @@ interface ProposedMatch {
   weekIndex: number;
 }
 
-interface GapMatch {
-  type: 'insert';
-  activity: FullActivityEntry;
-  weekBlockId: string;
-  weekIndex: number;
-  date: string;
-}
-
-type MatchResult = ProposedMatch | GapMatch;
+type MatchResult = ProposedMatch;
 
 function computeDateMatches(
   unmatched: FullActivityEntry[],
@@ -101,7 +93,7 @@ function computeDateMatches(
     const actDate = activity.startDateLocal?.slice(0, 10);
     if (!actDate) continue;
 
-    // Try direct match first
+    // Try direct match
     const candidates = dateToWorkouts.get(actDate);
     if (candidates) {
       const available = candidates.find((c) => !usedWorkoutIds.has(c.workout.id));
@@ -110,12 +102,6 @@ function computeDateMatches(
         results.push({ type: 'reassign', activity, workout: available.workout, weekIndex: available.weekIndex });
         continue;
       }
-    }
-
-    // No existing workout on this date — check if date falls within a plan week
-    const week = dateToWeek.get(actDate);
-    if (week) {
-      results.push({ type: 'insert', activity, weekBlockId: week.weekBlockId, weekIndex: week.weekIndex, date: actDate });
     }
   }
 
@@ -206,20 +192,11 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
     setMatching(true);
     for (const m of matchPreview) {
       try {
-        if (m.type === 'reassign') {
-          await webhookPost('manual-activity', {
-            op: 'reassign',
-            activityIssueId: m.activity.id,
-            workoutId: m.workout.id,
-          });
-        } else {
-          await webhookPost('manual-activity', {
-            op: 'insert-and-match',
-            activityIssueId: m.activity.id,
-            weekBlockId: m.weekBlockId,
-            date: m.date,
-          });
-        }
+        await webhookPost('manual-activity', {
+          op: 'reassign',
+          activityIssueId: m.activity.id,
+          workoutId: m.workout.id,
+        });
       } catch (err) {
         console.error('match failed', m.activity.id, err);
       }
@@ -359,12 +336,8 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
                 {matchPreview.length === 0
                   ? 'No activities fall within the plan date range.'
                   : (() => {
-                      const reassigns = matchPreview.filter((m) => m.type === 'reassign').length;
-                      const inserts = matchPreview.filter((m) => m.type === 'insert').length;
-                      const parts: string[] = [];
-                      if (reassigns) parts.push(`${reassigns} match existing workout${reassigns > 1 ? 's' : ''}`);
-                      if (inserts) parts.push(`${inserts} will insert new workout${inserts > 1 ? 's' : ''}`);
-                      return parts.join(', ') + (inserts ? ' (agent will rebalance):' : ':');
+                      const reassigns = matchPreview.length;
+                      return `${reassigns} match existing workout${reassigns > 1 ? 's' : ''}:`;
                     })()}
               </div>
               {matchPreview.length > 0 && (
@@ -375,15 +348,9 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
                         {m.activity.name || m.activity.sportType || '(activity)'}
                       </span>
                       <span className="shrink-0 text-zinc-600">→</span>
-                      {m.type === 'reassign' ? (
-                        <span className="shrink-0 text-zinc-400">
-                          W{m.weekIndex + 1} · {m.workout.kind ?? 'easy'} · {m.workout.date}
-                        </span>
-                      ) : (
-                        <span className="shrink-0 text-amber-400">
-                          W{m.weekIndex + 1} · {m.date} · new workout (insert)
-                        </span>
-                      )}
+                      <span className="shrink-0 text-zinc-400">
+                        W{m.weekIndex + 1} · {m.workout.kind ?? 'easy'} · {m.workout.date}
+                      </span>
                     </div>
                   ))}
                 </div>

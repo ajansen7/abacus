@@ -47,6 +47,33 @@ async function main(): Promise<void> {
     activity = await client.fetchActivity(webhook.object_id);
   }
 
+  // Trim the raw Strava response to only the fields we need for reasoning,
+  // display, and reconciliation. The full DetailedActivity response includes
+  // massive polyline strings, segment_efforts[], splits arrays, photos, etc.
+  // that bloat hot memory and burn tokens without adding value.
+  const rawAct = activity as Record<string, unknown>;
+  const trimmedActivity = {
+    id: rawAct.id,
+    name: rawAct.name,
+    type: rawAct.type,
+    sport_type: rawAct.sport_type,
+    start_date: rawAct.start_date,
+    start_date_local: rawAct.start_date_local,
+    distance: rawAct.distance,
+    moving_time: rawAct.moving_time,
+    elapsed_time: rawAct.elapsed_time,
+    total_elevation_gain: rawAct.total_elevation_gain,
+    elev_high: rawAct.elev_high,
+    elev_low: rawAct.elev_low,
+    average_speed: rawAct.average_speed,
+    max_speed: rawAct.max_speed,
+    average_heartrate: rawAct.average_heartrate,
+    max_heartrate: rawAct.max_heartrate,
+    suffer_score: rawAct.suffer_score,
+    average_cadence: rawAct.average_cadence,
+    description: rawAct.description,
+  };
+
   const beads = new Beads();
   const id = await beads.create({
     title: `Strava activity ${webhook.object_id} (${webhook.aspect_type})`,
@@ -59,7 +86,7 @@ async function main(): Promise<void> {
       eventTimeUnix: webhook.event_time,
       fetchedAt: new Date().toISOString(),
       offline,
-      activity,
+      activity: trimmedActivity,
     },
   });
   console.log(`[fetch-strava] ${id} (offline=${offline})`);

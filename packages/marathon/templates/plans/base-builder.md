@@ -13,10 +13,10 @@ Pick this template when the user has a recent running base of roughly 10–15 mi
 
 ## Workout shape rules
 
-- Easy runs at conversational pace — the runner should be able to speak full sentences throughout. Cap at 70% of long-run duration.
+- Easy runs at conversational pace — the runner should be able to speak full sentences throughout. Cap at 70% of long-run duration. For trail runners, prioritize HR Zone 2 over pace.
 - Tempo sessions at "comfortably hard" — sustainable for 20–40 min; roughly 80–85% max HR. Duration builds from 20 min up to 40 min over the quality block.
-- Interval sessions are 4–6 × 800 m or 4 × 1 mile at 5k race effort with full recovery jogs. Introduce no earlier than week 5.
-- Long run grows by no more than 10 min (or ~1 mile) per week; maximum 20–22 miles for this template.
+- Interval sessions are 4–6 × 800 m or 4 × 1 mile at 5k race effort with full recovery jogs. Introduce no earlier than week 5. For trail runners, substitute hill repeats for intervals.
+- Long run grows by no more than 10 min (or ~1 mile) per week; maximum 20–22 miles for this template. For trail runs, specify `targetElevationGain` if the race is hilly.
 - Strength is one session per week, 40–50 min, moderate load. Include single-leg stability work (step-downs, split squats) when knee injury appears in plan-context.
 - One full rest day per week, always the day after the long run.
 

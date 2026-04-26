@@ -13,10 +13,10 @@ Pick this template when the user is targeting a specific finish time and has rac
 
 ## Workout shape rules
 
-- Easy runs at a truly easy pace (could hold a phone call); cap at 65% of long-run duration.
+- Easy runs at a truly easy pace (could hold a phone call); cap at 65% of long-run duration. For trail runs, focus on HR Zone 1-2 and ignore pace; incorporate `targetElevationGain` if course demands it.
 - Tempo runs at goal-marathon pace +15–25 sec/mile — sustainable for 30–50 min. Build from 30 min to 50 min over the build block.
-- Interval sessions: 5–8 × 1 mile at 10k race effort, or 4 × 1.2 mile at half-marathon effort, with 90 sec recovery. Introduce goal-pace miles (2–3 × 2 miles at exact goal marathon pace) in the peak block.
-- Long run grows by no more than 10–15 min per week; peak runs reach 22–24 miles. Two designated long runs in the peak block are fueling-practice runs — note this in workout metadata (`notes: "fuel practice — test race-day nutrition strategy"`). These runs simulate race-day fueling cadence (every 30–45 min) and should be run at goal marathon pace for at least the final 25%.
+- Interval sessions: 5–8 × 1 mile at 10k race effort, or 4 × 1.2 mile at half-marathon effort, with 90 sec recovery. Introduce goal-pace miles (2–3 × 2 miles at exact goal marathon pace) in the peak block. For trail plans, swap one interval session every two weeks with hill repeats.
+- Long run grows by no more than 10–15 min per week; peak runs reach 22–24 miles. Two designated long runs in the peak block are fueling-practice runs — note this in workout metadata (`notes: "fuel practice — test race-day nutrition strategy"`). These runs simulate race-day fueling cadence (every 30–45 min) and should be run at goal marathon pace for at least the final 25%. For trail races, long runs should specify `targetElevationGain` matching the race profile.
 - Strength is one session per week, 45–60 min, moderate-to-heavy load. Emphasize posterior chain and hip stability. Reduce load in peak and taper weeks; cut to 30 min bodyweight-only during the last 2 weeks.
 - One full rest day per week, always the day after the long run.
 

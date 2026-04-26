@@ -125,6 +125,14 @@ export interface FullActivityEntry {
   distance?: number;
   movingTime?: number;
   startDateLocal?: string;
+  totalElevationGain?: number;
+  elevHigh?: number;
+  elevLow?: number;
+  averageHeartrate?: number;
+  maxHeartrate?: number;
+  sufferScore?: number;
+  averageCadence?: number;
+  averageSpeed?: number;
 }
 
 export interface RaceEntry {
