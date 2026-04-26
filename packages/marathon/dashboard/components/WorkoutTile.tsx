@@ -157,7 +157,7 @@ export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Pr
                       <span>{actual.durationMin} min</span>
                       {distMi && <span>{distMi} mi</span>}
                       {paceMinMi && <span>{paceMinMi} /mi</span>}
-                      <span className="text-zinc-500 capitalize">{actual.activityKind ?? actual.kind}</span>
+                      <span className="text-zinc-500 capitalize">{actual.activityKind}</span>
                     </div>
                   ) : null}
                   {actual.source === 'manual' ? (
@@ -248,7 +248,7 @@ export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Pr
                     type="number"
                     step="0.01"
                     min={0}
-                    defaultValue={actual?.distanceM ? +(actual.distanceM / 1609.34).toFixed(2) : ''}
+
                     className="rounded border border-border bg-zinc-800 px-2 py-1 text-xs text-zinc-100"
                     placeholder="miles"
                   />
