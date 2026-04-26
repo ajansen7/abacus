@@ -4,8 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { WorkoutTile } from './WorkoutTile';
 import { TaskStream } from './TaskStream';
 import { ActivityRow } from './ActivityRow';
-import { ManualActivityForm } from './ManualActivityForm';
-import { eventsUrl, getState, type MarathonState } from '@/lib/abacus';
+import { eventsUrl, getState, type FullActivityEntry, type MarathonState } from '@/lib/abacus';
 
 type LifecycleEvent =
   | { type: 'TASK_QUEUED'; taskId: string; kind: string }
@@ -27,19 +26,25 @@ function daysUntil(isoDate: string | undefined): number | null {
   return Math.ceil((target - Date.now()) / 86_400_000);
 }
 
-const DEVIATION_CHIP: Record<string, string> = {
-  met: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-  partial: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
-  swapped: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-  skipped: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-  extra: 'bg-purple-500/15 text-purple-300 border-purple-500/30',
-};
+function unmatchedActivities(
+  activities: FullActivityEntry[],
+  weeks: MarathonState['weeks'],
+): FullActivityEntry[] {
+  const matchedIds = new Set<string>();
+  for (const week of weeks) {
+    for (const w of week.workouts) {
+      if (w.actual?.activityId) matchedIds.add(w.actual.activityId);
+    }
+  }
+  return activities.filter((a) => !matchedIds.has(a.id));
+}
 
 export function Dashboard({ initial }: { initial: MarathonState | null }) {
   const [state, setState] = useState<MarathonState | null>(initial);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [tasks, setTasks] = useState<LiveTask[]>([]);
   const [connected, setConnected] = useState(false);
+  const [showUnmatched, setShowUnmatched] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
   const refresh = useCallback(async () => {
@@ -109,9 +114,11 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
 
   const daysToRace = daysUntil(state.race?.date ?? state.plan?.raceDate);
   const activities = state.allActivities ?? state.recentActivities;
+  const unmatched = unmatchedActivities(activities, state.weeks);
 
   return (
     <main className="mx-auto max-w-2xl p-4 sm:p-6">
+      {/* Header */}
       <header className="mb-6 flex items-start justify-between">
         <div>
           <div className="text-xs uppercase tracking-widest text-muted">Marathon</div>
@@ -161,6 +168,7 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
         </div>
       </header>
 
+      {/* Current week workouts — each tile shows planned + actual inline */}
       {currentWeek ? (
         <section className="mb-6">
           <div className="mb-2 flex items-center justify-between text-xs text-muted">
@@ -171,25 +179,24 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {currentWeek.workouts.map((w) => (
-              <div key={w.id} className="relative">
-                <WorkoutTile
-                  workout={w}
-                  isToday={w.date === state.todayIso}
-                  onEffortLogged={() => void refresh()}
-                />
-                {w.actual?.deviationStatus ? (
-                  <span
-                    className={`absolute right-2 top-2 rounded border px-1.5 py-0.5 text-xs ${DEVIATION_CHIP[w.actual.deviationStatus] ?? ''}`}
-                  >
-                    {w.actual.deviationStatus}
-                  </span>
-                ) : null}
-              </div>
+              <WorkoutTile
+                key={w.id}
+                workout={w}
+                isToday={w.date === state.todayIso}
+                onEffortLogged={() => void refresh()}
+              />
             ))}
+          </div>
+        </section>
+      ) : state.plan && state.weeks.length === 0 ? (
+        <section className="mb-6">
+          <div className="rounded-lg border border-border bg-panel p-4 text-sm text-muted">
+            Plan is generating — check agent activity below.
           </div>
         </section>
       ) : null}
 
+      {/* Agent activity */}
       {tasks.length > 0 ? (
         <section className="mb-6">
           <div className="mb-2 text-xs uppercase tracking-widest text-muted">Agent activity</div>
@@ -219,20 +226,28 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
         </section>
       ) : null}
 
-      <section className="mb-6">
-        <div className="mb-2 text-xs uppercase tracking-widest text-muted">Activity log</div>
-        {activities.length > 0 ? (
-          <div className="flex flex-col gap-2">
-            {activities.slice(0, 20).map((a) => (
-              <ActivityRow key={a.id} activity={a} onChange={() => void refresh()} />
-            ))}
-          </div>
-        ) : (
-          <div className="text-sm text-muted">No activities yet.</div>
-        )}
-        <ManualActivityForm onAdded={() => void refresh()} />
-      </section>
+      {/* Unmatched / extra activities (didn't map to a planned workout) */}
+      {unmatched.length > 0 ? (
+        <section className="mb-6">
+          <button
+            type="button"
+            onClick={() => setShowUnmatched((v) => !v)}
+            className="mb-2 flex items-center gap-1 text-xs uppercase tracking-widest text-muted hover:text-zinc-300"
+          >
+            <span>Unmatched activities ({unmatched.length})</span>
+            <span>{showUnmatched ? '▲' : '▼'}</span>
+          </button>
+          {showUnmatched ? (
+            <div className="flex flex-col gap-2">
+              {unmatched.map((a) => (
+                <ActivityRow key={a.id} activity={a} onChange={() => void refresh()} />
+              ))}
+            </div>
+          ) : null}
+        </section>
+      ) : null}
 
+      {/* Flags */}
       {state.flags.length > 0 ? (
         <section className="mb-6">
           <div className="mb-2 text-xs uppercase tracking-widest text-muted">Flags</div>

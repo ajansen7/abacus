@@ -69,7 +69,7 @@ export default function NewPlanPage() {
         </label>
         <label className="flex flex-col gap-1 text-sm text-zinc-300">
           Training start date
-          <input type="date" name="startDate" required defaultValue={new Date().toISOString().slice(0, 10)} className="rounded-md border border-border bg-panel px-3 py-2 text-zinc-100 outline-none focus:border-emerald-400/50" />
+          <input type="date" name="startDate" required defaultValue={new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)} className="rounded-md border border-border bg-panel px-3 py-2 text-zinc-100 outline-none focus:border-emerald-400/50" />
         </label>
         <label className="flex flex-col gap-1 text-sm text-zinc-300">
           Steering context
