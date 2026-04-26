@@ -141,6 +141,19 @@ async function create(callback: string): Promise<void> {
     callback_url: callback,
     verify_token: verifyToken!,
   });
+  // Clean up any existing subscriptions first (Strava only allows 1 per app)
+  const listUrl = new URL(STRAVA_SUB_URL);
+  listUrl.searchParams.set('client_id', clientId);
+  listUrl.searchParams.set('client_secret', clientSecret);
+  const listRes = await fetch(listUrl.toString());
+  if (listRes.ok) {
+    const subs = (await listRes.json()) as Array<{ id: number }>;
+    for (const s of subs) {
+      console.log(`[strava-subscribe] removing orphaned subscription ${s.id}`);
+      await fetch(`${STRAVA_SUB_URL}/${s.id}?client_id=${clientId}&client_secret=${clientSecret}`, { method: 'DELETE' });
+    }
+  }
+
   console.log(`[strava-subscribe] posting subscription for ${callback}`);
   const res = await fetch(STRAVA_SUB_URL, {
     method: 'POST',

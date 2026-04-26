@@ -155,12 +155,24 @@ if [[ "$WITH_TUNNEL" -eq 1 ]]; then
       log "tunnel: $TUNNEL_URL"
       CALLBACK="${TUNNEL_URL}/api/marathon/webhook/strava"
       log "registering Strava subscription → $CALLBACK"
-      SUBSCRIPTION_ID=$(pnpm --filter @abacus-products/marathon exec tsx scripts/strava-subscribe.ts \
-        --callback "$CALLBACK" 2>/dev/null | grep -oE 'id=[0-9]+' | cut -d= -f2 | head -1 || true)
-      if [[ -n "$SUBSCRIPTION_ID" ]]; then
-        log "Strava subscription ID: $SUBSCRIPTION_ID"
+      
+      set +e
+      for attempt in 1 2 3; do
+        SUB_OUT=$(pnpm --filter @abacus-products/marathon exec tsx scripts/strava-subscribe.ts \
+          --callback "$CALLBACK" 2>&1)
+        SUB_EXIT=$?
+        if [ "$SUB_EXIT" = "0" ]; then break; fi
+        err "  attempt $attempt failed. Output:"
+        echo "$SUB_OUT" | sed 's/^/    /' >&2
+        sleep 5
+      done
+      set -e
+
+      if [ "$SUB_EXIT" != "0" ]; then
+        err "failed to register Strava subscription after 3 attempts"
       else
-        err "failed to register Strava subscription — see logs"
+        SUBSCRIPTION_ID=$(echo "$SUB_OUT" | grep -oE 'id=[0-9]+' | cut -d= -f2 | head -1 || true)
+        log "Strava subscription ID: $SUBSCRIPTION_ID"
       fi
     fi
   fi
