@@ -47,7 +47,7 @@
       "prompt": "Historical Strava activities were just imported. Task ID: {{taskId}}. Payload: {{payloadJson}}. Hot memory: {{hotMemoryJson}}.\n\nNo agent action required — generate_plan will see these activities in its hot memory. Exit silently."
     },
     "generate_plan": {
-      "preScript": "",
+      "preScript": "tsx scripts/daily-reeval-shim.ts",
       "prompt": "A plan shell exists with a race, training-plan record, and plan-context. Task ID: {{taskId}}. Payload: {{payloadJson}}. Hot memory (race, plan, context, recent Strava activity from backfill): {{hotMemoryJson}}.\n\nYour job: read the plan-context notes, read the available templates via list_templates and read_template, choose the closest fit, then build out the full plan using create_week_block and create_workout. Honor every rule in claude.md (template selection, mileage cap, taper structure, partner/injury constraints). When done, you may also call update_plan_meta to set goalPace if the user implied one. Make no flag_overtraining calls in this task — that is for runtime adjustments only."
     },
     "daily_reeval": {
