@@ -22,10 +22,10 @@ export async function backfillCore({ beads, strava, sinceUnix, beforeUnix }: Bac
       ? { afterUnix: sinceUnix, beforeUnix }
       : { afterUnix: sinceUnix },
   );
-  let created = 0;
+  const createdIds: string[] = [];
   for (const activity of activities as any[]) {
     if (seen.has(activity.id)) continue;
-    await beads.create({
+    const id = await beads.create({
       title: `strava ${activity.id} ${activity.type} ${activity.start_date}`,
       labels: [TYPE_STRAVA_ACTIVITY],
       metadata: {
@@ -40,9 +40,9 @@ export async function backfillCore({ beads, strava, sinceUnix, beforeUnix }: Bac
       },
     });
     seen.add(activity.id);
-    created += 1;
+    createdIds.push(id);
   }
-  return { created, total: (activities as any[]).length };
+  return { created: createdIds.length, createdIds, total: (activities as any[]).length };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

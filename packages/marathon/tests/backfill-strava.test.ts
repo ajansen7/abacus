@@ -26,8 +26,10 @@ describe('backfillCore', () => {
     const stravaLike = {
       listActivities: async () => [sampleActivity(1), sampleActivity(2), sampleActivity(3)],
     };
-    await backfillCore({ beads: beadsLike as any, strava: stravaLike as any, sinceUnix: 0 });
+    const result = await backfillCore({ beads: beadsLike as any, strava: stravaLike as any, sinceUnix: 0 });
     expect(created).toHaveLength(3);
+    expect(result.createdIds).toHaveLength(3);
+    expect(result.createdIds[0]).toBe('sa-1');
   });
 
   it('does not duplicate on second run', async () => {
@@ -47,8 +49,9 @@ describe('backfillCore', () => {
     const stravaLike = {
       listActivities: async () => [sampleActivity(1), sampleActivity(2), sampleActivity(3)],
     };
-    await backfillCore({ beads: beadsLike as any, strava: stravaLike as any, sinceUnix: 0 });
+    const result = await backfillCore({ beads: beadsLike as any, strava: stravaLike as any, sinceUnix: 0 });
     expect(created).toHaveLength(1);
+    expect(result.createdIds).toHaveLength(1);
     expect(created[0].metadata.activityId).toBe(3);
   });
 });
