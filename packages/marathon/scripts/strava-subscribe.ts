@@ -148,9 +148,14 @@ async function create(callback: string): Promise<void> {
   const listRes = await fetch(listUrl.toString());
   if (listRes.ok) {
     const subs = (await listRes.json()) as Array<{ id: number }>;
-    for (const s of subs) {
-      console.log(`[strava-subscribe] removing orphaned subscription ${s.id}`);
-      await fetch(`${STRAVA_SUB_URL}/${s.id}?client_id=${clientId}&client_secret=${clientSecret}`, { method: 'DELETE' });
+    if (subs.length > 0) {
+      for (const s of subs) {
+        console.log(`[strava-subscribe] removing orphaned subscription ${s.id}`);
+        await fetch(`${STRAVA_SUB_URL}/${s.id}?client_id=${clientId}&client_secret=${clientSecret}`, { method: 'DELETE' });
+      }
+      // Strava's DELETE is eventually consistent; give the backend a moment to
+      // process it before we POST a new subscription, otherwise we get a 400.
+      await new Promise((r) => setTimeout(r, 3_000));
     }
   }
 

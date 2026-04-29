@@ -32,9 +32,10 @@ export async function createPlanCore({ beads, queue, payload }: CreatePlanDeps) 
     metadata: payload.race,
   });
 
+  // ceil so that day-6 of the last week lands on raceDate (floor leaves it one week short).
   const weeksBetween = Math.max(
     1,
-    Math.floor(
+    Math.ceil(
       (new Date(payload.race.date).getTime() - new Date(payload.startDate).getTime()) /
         (7 * 24 * 60 * 60 * 1000),
     ),

@@ -105,7 +105,7 @@ export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Pr
         )}
       </div>
 
-      {workout.notes ? <div className="mt-2 text-xs text-muted">{workout.notes}</div> : null}
+      {workout.notes ? <div className="mt-2 whitespace-pre-line text-xs text-muted">{workout.notes}</div> : null}
 
       {/* Actual section — inline, always visible when present */}
       {actual ? (() => {

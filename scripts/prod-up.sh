@@ -153,9 +153,28 @@ if [[ "$WITH_TUNNEL" -eq 1 ]]; then
       err "could not detect tunnel URL — see $LOG_DIR/cloudflared.log"
     else
       log "tunnel: $TUNNEL_URL"
+
+      # Verify the local platform server is healthy (fast, reliable).
+      # We don't check the external tunnel URL here because self-referential
+      # HTTPS routing from the same host through cloudflare is unreliable —
+      # the tunnel handles incoming requests from Strava fine even when curl
+      # from localhost can't reach it. Trust cloudflared's "Registered tunnel
+      # connection" log line as proof the tunnel is wired up.
+      log "checking local platform health…"
+      LOCAL_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
+        "http://127.0.0.1:3001/health" 2>/dev/null)
+      if [[ "$LOCAL_CODE" == "200" ]]; then
+        log "platform healthy — tunnel assumed reachable"
+        # Give the cloudflare edge a moment to propagate the tunnel connection
+        # before Strava's inbound verification request arrives.
+        sleep 5
+      else
+        err "platform health check returned $LOCAL_CODE — webhook verification may fail"
+      fi
+
       CALLBACK="${TUNNEL_URL}/api/marathon/webhook/strava"
       log "registering Strava subscription → $CALLBACK"
-      
+
       set +e
       for attempt in 1 2 3; do
         SUB_OUT=$(pnpm --filter @abacus-products/marathon exec tsx scripts/strava-subscribe.ts \
