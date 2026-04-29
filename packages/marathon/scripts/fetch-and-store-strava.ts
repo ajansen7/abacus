@@ -20,10 +20,10 @@ async function main(): Promise<void> {
   if (!raw) throw new Error('fetch-and-store-strava: ABACUS_PAYLOAD env not set');
   const parsed = JSON.parse(raw) as Record<string, unknown>;
 
-  // Manual reassign / reconcile payloads already have the activity in Beads —
+  // Manual reassign, sync, and reconcile payloads already have the activity in Beads —
   // nothing to fetch. Exit cleanly so the agent prompt still runs.
-  if (parsed.reconcileWorkoutId || parsed.forceActivityId || parsed.manualActivityIssueId) {
-    console.log('[fetch-strava] skip — reconcile/reassign payload, activity already stored');
+  if (parsed.activityIssueId || parsed.reconcileWorkoutId || parsed.forceActivityId || parsed.manualActivityIssueId) {
+    console.log('[fetch-strava] skip — activity already stored');
     return;
   }
 

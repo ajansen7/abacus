@@ -13,7 +13,9 @@
     ],
     "windowDays": 14,
     "maxItems": 200,
-    "statusFilter": ["open"]
+    "statusFilter": [
+      "open"
+    ]
   },
   "webhooks": {
     "strava": {
@@ -27,6 +29,9 @@
     },
     "coach-message": {
       "preScript": "[ -f dist/scripts/coach-message-shim.js ] && node dist/scripts/coach-message-shim.js || tsx scripts/coach-message-shim.ts"
+    },
+    "sync-strava": {
+      "preScript": "[ -f dist/scripts/sync-strava-shim.js ] && node dist/scripts/sync-strava-shim.js || tsx scripts/sync-strava-shim.ts"
     }
   },
   "state": {
@@ -35,19 +40,19 @@
   "tasks": {
     "process_activity": {
       "preScript": "[ -f dist/scripts/fetch-and-store-strava.js ] && node dist/scripts/fetch-and-store-strava.js || tsx scripts/fetch-and-store-strava.ts",
-      "prompt": "A new Strava activity was just stored as a `marathon:strava-activity` Beads issue. Task ID: {{taskId}}. Webhook payload: {{payloadJson}}.\n\nHot memory snapshot (open plan, week-blocks, workouts, plan-context, effort logs, recent activities):\n{{hotMemoryJson}}\n\nYour job, in order:\n\n1. **Reconciliation.** Find the workout in hot memory whose `date` matches the activity's local date (YYYY-MM-DD from `start_date_local`). If exactly one workout matches: call `set_workout_actual({workoutId, actual: {activityId, activityKind, source: \"strava\", deviationStatus, durationMin}})` where deviationStatus follows the rules in claude.md. If zero workouts match: this is an \"extra\" activity — do not patch any workout. If multiple workouts match on the same day: pick the one whose `kind` maps closest to the activity's mapped kind, and patch only that one.\n\n2. **Adaptation** (only if the deviation justifies it per claude.md). If reconciliation produced `swapped` or `skipped`, or the effort heuristics in claude.md trigger, call `update_workout` on workouts in the rest of the current week and the next week to re-balance. Do NOT touch workouts further out than 14 days. Do NOT touch peak/taper-week workouts unless directly impacted.\n\n3. **Flagging.** If overreach heuristics apply, call `flag_overtraining` as usual.\n\nUse `query_history` only if hot memory lacks data you need. Exit silently if no action is warranted."
+      "prompt": "A `marathon:strava-activity` Beads issue is ready for reconciliation. Task ID: {{taskId}}. Payload: {{payloadJson}}.\n\nHot memory snapshot (open plan, week-blocks, workouts, plan-context, effort logs, recent activities):\n{{hotMemoryJson}}\n\nYour job, in order:\n\n1. **Find the activity.** If `activityIssueId` is present in the task payload, find the `marathon:strava-activity` in hot memory with that Beads issue ID. Otherwise find the most recently added `marathon:strava-activity` in hot memory.\n\n2. **Find the workout.** If `workoutId` is present in the task payload, use that workout directly. Otherwise find the planned workout whose `date` matches the activity's `start_date_local` (YYYY-MM-DD). If zero workouts match on that date: this is an extra activity \u2014 do not patch any workout, exit silently. If multiple workouts match on the same day: pick the one whose `kind` maps closest to the activity's mapped kind.\n\n3. **Reconcile.** Call `set_workout_actual({workoutId, actual: {activityId, activityKind, source, deviationStatus, durationMin}})` where:\n   - `activityId` = the Beads issue ID of the activity\n   - `activityKind` = map sport_type per the rules in claude.md (run/bike/swim/hike/strength/mobility/other)\n   - `source` = \"strava\" (or \"manual\" if the activity metadata has source: \"manual\")\n   - `deviationStatus` = follow the reconciliation rules in claude.md (duration \u00b125%, pace \u00b115% on road, elevation-adjusted for trail, strength\u2192strength = met, etc.)\n   - `durationMin` = moving_time / 60 rounded to nearest integer\n\n4. **Adapt** (only if deviationStatus is `partial`, `swapped`, or `skipped`, or effort heuristics from claude.md apply). Call `update_workout` on workouts within the next 14 days to re-balance load. Do NOT touch workouts beyond day+14. Do NOT increase volume in taper weeks.\n\n5. **Flag.** If overreach heuristics from claude.md apply, call `flag_overtraining`.\n\nUse `query_history` only if hot memory lacks data you need. Exit silently if no action beyond step 3 is warranted."
     },
     "log_effort": {
       "preScript": "[ -f dist/scripts/ingest-perceived-effort.js ] && node dist/scripts/ingest-perceived-effort.js || tsx scripts/ingest-perceived-effort.ts",
-      "prompt": "A perceived-effort log was just stored as a `marathon:effort-log` Beads issue. Task ID: {{taskId}}. Payload: {{payloadJson}}.\n\nHot memory snapshot:\n{{hotMemoryJson}}\n\nIf the score is concerning (RPE ≥ 8 on what was meant to be an easy session, or sustained high RPE across the recent window), follow the heuristics in claude.md and either `flag_overtraining` or `update_workout` to back off the next session. If everything is in band, finish without writes."
+      "prompt": "A perceived-effort log was just stored as a `marathon:effort-log` Beads issue. Task ID: {{taskId}}. Payload: {{payloadJson}}.\n\nHot memory snapshot:\n{{hotMemoryJson}}\n\nIf the score is concerning (RPE \u2265 8 on what was meant to be an easy session, or sustained high RPE across the recent window), follow the heuristics in claude.md and either `flag_overtraining` or `update_workout` to back off the next session. If everything is in band, finish without writes."
     },
     "create_plan": {
       "preScript": "[ -f dist/scripts/create-plan-shim.js ] && node dist/scripts/create-plan-shim.js || tsx scripts/create-plan-shim.ts",
-      "prompt": "A new race and plan shell were just created. Task ID: {{taskId}}. Payload: {{payloadJson}}. Hot memory: {{hotMemoryJson}}.\n\nThis task has no agent work — the shim already enqueued backfill_strava and generate_plan as follow-on tasks. Exit silently without writes."
+      "prompt": "A new race and plan shell were just created. Task ID: {{taskId}}. Payload: {{payloadJson}}. Hot memory: {{hotMemoryJson}}.\n\nThis task has no agent work \u2014 the shim already enqueued backfill_strava and generate_plan as follow-on tasks. Exit silently without writes."
     },
     "backfill_strava": {
       "preScript": "[ -f dist/scripts/backfill-strava.js ] && node dist/scripts/backfill-strava.js || tsx scripts/backfill-strava.ts",
-      "prompt": "Historical Strava activities were just imported. Task ID: {{taskId}}. Payload: {{payloadJson}}. Hot memory: {{hotMemoryJson}}.\n\nNo agent action required — generate_plan will see these activities in its hot memory. Exit silently."
+      "prompt": "Historical Strava activities were just imported. Task ID: {{taskId}}. Payload: {{payloadJson}}. Hot memory: {{hotMemoryJson}}.\n\nNo agent action required \u2014 generate_plan will see these activities in its hot memory. Exit silently."
     },
     "generate_plan": {
       "preScript": "[ -f dist/scripts/generate-plan.js ] && node dist/scripts/generate-plan.js || tsx scripts/generate-plan.ts",
