@@ -25,6 +25,8 @@ import {
   createWorkout,
   SetWorkoutActualInput,
   setWorkoutActual,
+  ClearWorkoutActualInput,
+  clearWorkoutActual,
   ReadPlanContextInput,
   readPlanContext,
   ListTemplatesInput,
@@ -146,6 +148,19 @@ async function main(): Promise<void> {
     },
     async (input) => {
       const result = await setWorkoutActual(input);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    },
+  );
+
+  server.registerTool(
+    'clear_workout_actual',
+    {
+      description:
+        'Clear the actual completion record from a workout, resetting completed to false. Use to fix incorrectly matched or phantom completions.',
+      inputSchema: ClearWorkoutActualInput.shape,
+    },
+    async (input) => {
+      const result = await clearWorkoutActual(input);
       return { content: [{ type: 'text', text: JSON.stringify(result) }] };
     },
   );

@@ -167,6 +167,23 @@ export async function setWorkoutActual(input: SetWorkoutActualInput): Promise<{ 
   return { ok: true };
 }
 
+export const ClearWorkoutActualInput = z.object({
+  workoutId: z.string().min(1),
+});
+export type ClearWorkoutActualInput = z.infer<typeof ClearWorkoutActualInput>;
+
+export async function clearWorkoutActual(input: ClearWorkoutActualInput): Promise<{ ok: true }> {
+  const issue = await beads.show(input.workoutId);
+  if (!issue.labels.includes(TYPE_WORKOUT)) {
+    throw new Error(`clear_workout_actual: ${input.workoutId} is not a ${TYPE_WORKOUT}`);
+  }
+  await beads.updateMetadata(input.workoutId, {
+    actual: null,
+    completed: false,
+  });
+  return { ok: true };
+}
+
 // --- read-only context tools ---
 
 export const ReadPlanContextInput = z.object({ planId: z.string().min(1) });
