@@ -23,7 +23,9 @@ function makeBeads(planMeta: Record<string, unknown> = {}) {
   return {
     issues,
     list: async (labels: string[]) =>
-      issues.filter((i) => labels.every((l) => (i.labels as string[]).includes(l))),
+      labels.length === 0
+        ? issues
+        : issues.filter((i) => labels.every((l) => (i.labels as string[]).includes(l))),
     create: async (issue: any) => {
       const id = `sa-${issues.length + 1}`;
       issues.push({ id, ...issue });
@@ -130,7 +132,38 @@ describe('syncStravaCore', () => {
       planId: 'plan-1',
     });
 
+    // newCount=1 (only id=2 is new), but sa-existing is unmatched so both get queued
     expect(result.newCount).toBe(1);
-    expect(queue.enqueued).toHaveLength(1);
+    expect(queue.enqueued).toHaveLength(2);
+  });
+
+  it('does not re-queue activities already matched to a plan workout', async () => {
+    const beads = makeBeads();
+    beads.issues.push({
+      id: 'wb-1',
+      labels: ['marathon:week-block'],
+      metadata: { planId: 'plan-1', weekIndex: 0, theme: 'base', startDate: '2026-04-01' },
+    });
+    beads.issues.push({
+      id: 'wo-1',
+      labels: ['marathon:workout'],
+      metadata: { weekBlockId: 'wb-1', date: '2026-04-01', kind: 'easy', actual: { activityId: 'sa-existing' } },
+    });
+    beads.issues.push({
+      id: 'sa-existing',
+      labels: ['marathon:strava-activity'],
+      metadata: { activityId: 1 },
+    });
+    const queue = makeQueue();
+    const strava = { listActivities: async () => [] };
+
+    await syncStravaCore({
+      beads: beads as any,
+      queue: queue as any,
+      strava: strava as any,
+      planId: 'plan-1',
+    });
+
+    expect(queue.enqueued).toHaveLength(0);
   });
 });

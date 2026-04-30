@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Beads, Queue } from '@abacus/platform';
 import { createStravaClient, type StravaClient } from '../lib/strava-client.js';
 import { backfillCore } from './backfill-strava.js';
+import { TYPE_STRAVA_ACTIVITY, TYPE_WEEK_BLOCK, TYPE_WORKOUT } from '../lib/types.js';
 
 type Action =
   | { kind: 'respond'; status: number; body: string; contentType?: string }
@@ -34,10 +35,39 @@ export async function syncStravaCore({ beads, queue, strava, planId, nowIso }: S
   const lastSyncedAt = (meta.lastSyncedAt as string | undefined) ?? `${startDate}T00:00:00Z`;
   const syncStart = nowIso ?? new Date().toISOString();
 
+  // Fetch any new activities from Strava since last sync.
   const sinceUnix = Math.floor(new Date(lastSyncedAt).getTime() / 1000);
   const { createdIds } = await backfillCore({ beads, strava, sinceUnix });
 
-  for (const activityIssueId of createdIds) {
+  // Find existing activities that have never been reconciled against a workout.
+  // Build the set of activity Beads IDs already referenced in any active-plan workout's actual.
+  const allIssues = await beads.list([]);
+  const weekBlocks = allIssues.filter((i: any) => (i.labels ?? []).includes(TYPE_WEEK_BLOCK));
+  const planWbIds = new Set(
+    weekBlocks
+      .filter((wb: any) => (wb.metadata as Record<string, unknown>)?.planId === planId)
+      .map((wb: any) => wb.id),
+  );
+  const workouts = allIssues.filter((i: any) => (i.labels ?? []).includes(TYPE_WORKOUT));
+  const alreadyMatchedActivityIds = new Set<string>();
+  for (const w of workouts) {
+    const wMeta = (w.metadata ?? {}) as Record<string, unknown>;
+    if (!planWbIds.has(wMeta.weekBlockId as string)) continue;
+    const actual = wMeta.actual as Record<string, unknown> | undefined;
+    if (actual?.activityId) alreadyMatchedActivityIds.add(actual.activityId as string);
+  }
+
+  // Queue newly backfilled activities + any previously stored but unreconciled ones.
+  const newIdSet = new Set(createdIds);
+  const allActivities = allIssues.filter((i: any) => (i.labels ?? []).includes(TYPE_STRAVA_ACTIVITY));
+  const toQueue: string[] = [...createdIds];
+  for (const act of allActivities) {
+    if (!newIdSet.has(act.id) && !alreadyMatchedActivityIds.has(act.id)) {
+      toQueue.push(act.id);
+    }
+  }
+
+  for (const activityIssueId of toQueue) {
     await queue.enqueue({
       product: 'marathon',
       kind: 'process_activity',
@@ -48,7 +78,7 @@ export async function syncStravaCore({ beads, queue, strava, planId, nowIso }: S
 
   await beads.updateMetadata(planId, { lastSyncedAt: syncStart });
 
-  return { newCount: createdIds.length };
+  return { newCount: createdIds.length, queuedCount: toQueue.length };
 }
 
 async function main(): Promise<void> {
