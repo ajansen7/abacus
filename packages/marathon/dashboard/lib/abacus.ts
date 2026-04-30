@@ -86,6 +86,7 @@ export interface Plan {
   goalPace?: string;
   startDate?: string;
   weeks?: number;
+  lastSyncedAt?: string;
 }
 
 export interface EffortEntry {
