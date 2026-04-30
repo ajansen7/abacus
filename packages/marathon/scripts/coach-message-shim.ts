@@ -1,7 +1,12 @@
 #!/usr/bin/env tsx
 import { z } from 'zod';
 import { Beads } from '@abacus/platform';
-import { TYPE_PLAN_CONTEXT, TYPE_TRAINING_PLAN } from '../lib/types.js';
+import {
+  TYPE_PLAN_CONTEXT,
+  TYPE_TRAINING_PLAN,
+  TYPE_COACH_MESSAGE,
+  CoachMessageMeta,
+} from '../lib/types.js';
 
 const Body = z.object({ message: z.string() });
 
@@ -39,22 +44,39 @@ async function main() {
     return;
   }
 
+  // Store message as a conversation bead so the agent can read it and reply
+  const now = new Date().toISOString();
+  const msgMeta = CoachMessageMeta.parse({
+    planId: activePlan.id,
+    role: 'user',
+    content: parsed.data.message,
+    createdAt: now,
+  });
+  const messageId = await beads.create({
+    title: `coach-msg:user:${now}`,
+    labels: [TYPE_COACH_MESSAGE],
+    metadata: msgMeta,
+  });
+
+  // Also append to plan-context so daily_reeval continues to see coach notes
   const metadata = (ctx.metadata ?? {}) as Record<string, unknown>;
   const oldNotes = (metadata.notes as string) || '';
-  
-  const timestamp = new Date().toISOString().slice(0, 10);
+  const timestamp = now.slice(0, 10);
   const newEntry = `[${timestamp}] Coach Note: ${parsed.data.message}`;
-  
   const updatedNotes = oldNotes ? `${oldNotes}\n\n${newEntry}` : newEntry;
-
   await beads.updateMetadata(ctx.id, {
     ...metadata,
     notes: updatedNotes,
-    updatedAt: new Date().toISOString(),
+    updatedAt: now,
   });
 
-  // Enqueue daily_reeval to wake up the agent immediately
-  respond({ kind: 'enqueue', taskKind: 'daily_reeval', payload: {}, status: 202 });
+  // Enqueue coach_reply (not daily_reeval) so the agent generates a visible reply
+  respond({
+    kind: 'enqueue',
+    taskKind: 'coach_reply',
+    payload: { planId: activePlan.id, userMessageId: messageId },
+    status: 202,
+  });
 }
 
 main().catch((err) => {
