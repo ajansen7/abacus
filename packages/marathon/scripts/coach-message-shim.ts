@@ -75,6 +75,7 @@ async function main() {
     kind: 'enqueue',
     taskKind: 'coach_reply',
     payload: { planId: activePlan.id, userMessageId: messageId },
+    dedupeKey: messageId,
     status: 202,
   });
 }

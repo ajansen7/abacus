@@ -16,6 +16,7 @@
  *     recentEfforts: [...],
  *     recentActivities: [...],
  *     flags: [...],
+ *     coachMessages: [...],
  *     recentTasks: [...],
  *   }
  */

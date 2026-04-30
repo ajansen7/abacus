@@ -37,6 +37,8 @@ The platform injects a snapshot before your prompt:
 Hot memory is the source of truth for recent state. Do not re-query for data
 that is already there.
 
+**Coach message window:** `marathon:coach-message` beads are included in hot memory with the same 14-day window. If the user references a prior conversation that is not visible in hot memory, use `query_history` to retrieve older messages: `SELECT metadata FROM issues WHERE labels LIKE '%marathon:coach-message%' AND metadata->>'planId' = '<planId>' ORDER BY metadata->>'createdAt' ASC LIMIT 20`.
+
 ## Heuristics — when to act
 
 These are not exhaustive — they are the floor. Use judgement.

@@ -58,6 +58,8 @@ A global "Ask Coach" floating action button (bottom right) opens a chat interfac
 where you can ask questions about your plan, request schedule adjustments, or
 get training advice.
 
+**Coach conversations are persistent** — your full message history with the coach is stored and visible when you reopen the chat. When you send a message, the coach agent reads your recent training data and any plan adjustments needed, replies in plain language describing exactly what it changed (or why no changes were needed), and any workout modifications appear in the plan immediately.
+
 
 ## Plan templates
 
