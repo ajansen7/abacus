@@ -40,21 +40,12 @@ automatically — no code changes to `packages/abacus/`.
 
 ## Marathon product (live)
 
-Marathon (`packages/marathon/`) is the first product and the platform's PoC.
+Marathon is the first product built on the Abacus platform. It provides a race-driven training planner that ingests Strava activities, maintains a structured plan, and uses Claude Code sessions to reconcile and adapt workouts.
 
 ![Marathon Dashboard](./packages/marathon/assets/dashboard_main.png)
 
+See [packages/marathon/README.md](./packages/marathon/README.md) for the full product documentation, including feature lists, data models, and component details.
 
-- `scripts/seed-plan.ts` — deterministic CLI that lays down 1 plan + N week-blocks + 7N workouts in Beads.
-- `scripts/strava-onboard.ts` — one-shot OAuth handshake; writes `STRAVA_REFRESH_TOKEN` to `.env.local`.
-- `scripts/strava-subscribe.ts` — create / list / delete Strava webhook push-subscriptions.
-- `scripts/strava-webhook-shim.ts` — handles the `hub.challenge` GET handshake and transforms POSTs into `enqueue(process_activity)` actions with a dedupe key.
-- `scripts/fetch-and-store-strava.ts` — mechanical: refresh OAuth, fetch activity, write a `marathon:strava-activity` issue. Has `STRAVA_OFFLINE=1` mode for tests. Skips Strava fetch for reassign/reconcile payloads.
-- `scripts/ingest-perceived-effort.ts` — webhook handler for the slider; writes a `marathon:effort-log` issue.
-- `scripts/manual-activity-shim.ts` — handles add/delete/reassign/insert-and-match operations for activities. Insert-and-match creates new workouts for gap days and triggers agent rebalancing.
-- `scripts/get-state.ts` — state shim returning the active plan, 14-day window of workouts, recent efforts/activities/flags.
-- `mcp-servers/training-plan/` — exposes `get_plan`, `update_workout`, `query_history`, `flag_overtraining` to the agent.
-- `dashboard/` — Next.js UI: full 28-week plan overview with expandable workout tiles, bulk activity matching (reassign + insert-and-match), perceived-effort slider, live task stream.
 
 ## Repo layout
 

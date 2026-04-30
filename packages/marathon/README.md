@@ -173,6 +173,23 @@ marathon:flag            — overtraining or concern flag
 
 `workout.actual.deviationStatus`: `met | partial | swapped | skipped | extra`
 
+## Components
+
+The Marathon product consists of several key components:
+
+- **Scripts** (`scripts/`):
+    - `seed-plan.ts` — deterministic CLI that lays down 1 plan + N week-blocks + 7N workouts in Beads.
+    - `strava-onboard.ts` — one-shot OAuth handshake; writes `STRAVA_REFRESH_TOKEN` to `.env.local`.
+    - `strava-subscribe.ts` — create / list / delete Strava webhook push-subscriptions.
+    - `strava-webhook-shim.ts` — handles the `hub.challenge` GET handshake and transforms POSTs into `enqueue(process_activity)` actions with a dedupe key.
+    - `fetch-and-store-strava.ts` — mechanical: refresh OAuth, fetch activity, write a `marathon:strava-activity` issue. Has `STRAVA_OFFLINE=1` mode for tests. Skips Strava fetch for reassign/reconcile payloads.
+    - `ingest-perceived-effort.ts` — webhook handler for the slider; writes a `marathon:effort-log` issue.
+    - `manual-activity-shim.ts` — handles add/delete/reassign/insert-and-match operations for activities. Insert-and-match creates new workouts for gap days and triggers agent rebalancing.
+    - `get-state.ts` — state shim returning the active plan, 14-day window of workouts, recent efforts/activities/flags.
+- **MCP Server** (`mcp-servers/training-plan/`): exposes `get_plan`, `update_workout`, `query_history`, and `flag_overtraining` to the agent.
+- **Dashboard** (`dashboard/`): Next.js UI featuring the full 28-week plan overview, expandable workout tiles, bulk activity matching, perceived-effort slider, and a live task stream.
+
+
 ## Development
 
 ```bash
