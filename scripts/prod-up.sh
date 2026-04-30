@@ -16,12 +16,13 @@
 # subscription if one was created.
 #
 # Flags:
-#   --no-tunnel      skip cloudflared + Strava subscription
-#   --no-dashboard   skip building and starting the marathon dashboard
-#   --skip-build     skip the build step (use existing build artifacts)
+#   --no-tunnel        skip cloudflared + Strava subscription
+#   --no-dashboard     skip building and starting the marathon dashboard
+#   --skip-build       skip the build step (use existing build artifacts)
+#   --public-dashboard expose the dashboard via a public cloudflared tunnel
 #
 # Logs:
-#   runtime/prod-logs/{platform,dashboard,cloudflared}.log
+#   runtime/prod-logs/{platform,dashboard,cloudflared,cloudflared-dashboard}.log
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -29,14 +30,16 @@ cd "$REPO_ROOT"
 
 WITH_TUNNEL=1
 WITH_DASHBOARD=1
+WITH_DASHBOARD_TUNNEL=0
 SKIP_BUILD=0
 for arg in "$@"; do
   case "$arg" in
     --no-tunnel) WITH_TUNNEL=0 ;;
     --no-dashboard) WITH_DASHBOARD=0 ;;
-    --skip-build) SKIP_BUILD=0; SKIP_BUILD=1 ;;
+    --skip-build) SKIP_BUILD=1 ;;
+    --public-dashboard) WITH_DASHBOARD_TUNNEL=1 ;;
     -h|--help)
-      sed -n '2,25p' "$0"; exit 0 ;;
+      sed -n '2,26p' "$0"; exit 0 ;;
     *) echo "[prod-up] unknown flag: $arg" >&2; exit 2 ;;
   esac
 done
@@ -47,7 +50,9 @@ mkdir -p "$LOG_DIR"
 PLATFORM_PID=""
 DASHBOARD_PID=""
 TUNNEL_PID=""
+DASHBOARD_TUNNEL_PID=""
 TUNNEL_URL=""
+DASHBOARD_TUNNEL_URL=""
 SUBSCRIPTION_ID=""
 
 log() { echo "[prod-up] $*"; }
@@ -75,6 +80,7 @@ cleanup() {
       --delete "$SUBSCRIPTION_ID" 2>/dev/null || true
   fi
   [[ -n "$TUNNEL_PID" ]]    && kill_tree "$TUNNEL_PID"
+  [[ -n "$DASHBOARD_TUNNEL_PID" ]] && kill_tree "$DASHBOARD_TUNNEL_PID"
   [[ -n "$DASHBOARD_PID" ]] && kill_tree "$DASHBOARD_PID"
   [[ -n "$PLATFORM_PID" ]]  && kill_tree "$PLATFORM_PID"
   wait 2>/dev/null || true
@@ -193,6 +199,28 @@ if [[ "$WITH_TUNNEL" -eq 1 ]]; then
         SUBSCRIPTION_ID=$(echo "$SUB_OUT" | grep -oE 'id=[0-9]+' | cut -d= -f2 | head -1 || true)
         log "Strava subscription ID: $SUBSCRIPTION_ID"
       fi
+    fi
+  fi
+fi
+
+# ── Dashboard Tunnel ──
+if [[ "$WITH_DASHBOARD_TUNNEL" -eq 1 ]]; then
+  if ! command -v cloudflared >/dev/null 2>&1; then
+    err "cloudflared not found — skipping dashboard tunnel"
+  elif [[ "$WITH_DASHBOARD" -eq 0 ]]; then
+    err "dashboard is disabled — skipping dashboard tunnel"
+  else
+    log "starting cloudflared tunnel for dashboard…"
+    cloudflared tunnel --url http://127.0.0.1:3000 \
+      >"$LOG_DIR/cloudflared-dashboard.log" 2>&1 &
+    DASHBOARD_TUNNEL_PID=$!
+    sleep 5
+
+    DASHBOARD_TUNNEL_URL=$(grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG_DIR/cloudflared-dashboard.log" | head -1 || true)
+    if [[ -z "$DASHBOARD_TUNNEL_URL" ]]; then
+      err "could not detect dashboard tunnel URL — see $LOG_DIR/cloudflared-dashboard.log"
+    else
+      log "public dashboard: $DASHBOARD_TUNNEL_URL"
     fi
   fi
 fi
