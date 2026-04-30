@@ -101,8 +101,13 @@ bash scripts/dev-up.sh
 
 Starts the platform on `:3001`, the marathon dashboard on `:3000`, a `cloudflared`
 quick tunnel, and registers a Strava webhook subscription pointing at the tunnel.
-Cleans up the subscription + child processes on `Ctrl-C`. Flags: `--no-tunnel`,
-`--no-dashboard`. Per-process logs land in `runtime/dev-logs/`.
+Cleans up the subscription + child processes on `Ctrl-C`.
+
+**Flags:**
+- `--no-tunnel`: skip starting the tunnel and registering the Strava webhook.
+- `--no-dashboard`: skip starting the Next.js dashboard.
+
+Per-process logs land in `runtime/dev-logs/`.
 
 ### Production mode (faster)
 
@@ -110,11 +115,16 @@ Cleans up the subscription + child processes on `Ctrl-C`. Flags: `--no-tunnel`,
 bash scripts/prod-up.sh
 ```
 
-Builds the platform (tsc) and dashboard (next build) first, then runs the
-compiled artifacts instead of tsx-watch + Next.js dev mode. Noticeably faster
-page loads and interaction. Use `--skip-build` to reuse existing build artifacts.
-Same flags as `dev-up.sh` (`--no-tunnel`, `--no-dashboard`). Logs in
-`runtime/prod-logs/`.
+Builds the platform (`tsc`) and dashboard (`next build`) first, then runs the
+compiled artifacts. This is much faster and more responsive for daily use.
+
+**Flags:**
+- `--skip-build`: skip the build step and reuse existing artifacts (saves time if no code changed).
+- `--public-dashboard`: expose the dashboard via a **public HTTPS URL** (cloudflared quick tunnel). Useful for accessing the dashboard from a phone or tablet.
+- `--no-tunnel`: skip the webhook tunnel and Strava registration.
+- `--no-dashboard`: skip building/starting the dashboard.
+
+Logs land in `runtime/prod-logs/`.
 
 ### Or start pieces individually
 

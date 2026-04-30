@@ -182,8 +182,13 @@ bash scripts/dev-up.sh
 # Production mode (builds first, then runs compiled — much faster)
 bash scripts/prod-up.sh
 
-# Production mode with existing build artifacts (skip rebuild)
-bash scripts/prod-up.sh --skip-build
+# Common flags for both scripts:
+#   --no-tunnel        skip cloudflared + Strava subscription
+#   --no-dashboard     skip starting the marathon dashboard
+
+# prod-up.sh only flags:
+#   --skip-build       skip the build step (use existing artifacts)
+#   --public-dashboard expose the dashboard via a public HTTPS URL (tunnel)
 ```
 
 Or run pieces individually:
