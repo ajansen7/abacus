@@ -5,7 +5,7 @@ import { WorkoutTile } from './WorkoutTile';
 import { PlanOverview } from './PlanOverview';
 import { TaskStream } from './TaskStream';
 import { ActivityRow } from './ActivityRow';
-import { eventsUrl, getState, webhookPost, type FullActivityEntry, type MarathonState, type Workout } from '@/lib/abacus';
+import { eventsUrl, getState, invoke, webhookPost, type FullActivityEntry, type MarathonState, type Workout } from '@/lib/abacus';
 import { CoachChat } from './CoachChat';
 
 type LifecycleEvent =
@@ -237,6 +237,15 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
     (t) => t.kind === 'coach_reply' && (t.phase === 'queued' || t.phase === 'started'),
   );
 
+  const isReanalyzing = tasks.some(
+    (t) => t.kind === 'daily_reeval' && (t.phase === 'queued' || t.phase === 'started'),
+  );
+
+  async function onReanalyze() {
+    if (!state?.todayIso) return;
+    await invoke('daily_reeval', {}, `daily_reeval:${state.todayIso}`);
+  }
+
   return (
     <main className="mx-auto max-w-2xl p-4 sm:p-6">
       {/* Header */}
@@ -285,6 +294,18 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
             <a href="/plan/context" className="text-zinc-400 underline underline-offset-2 hover:text-zinc-100">
               context
             </a>
+            <button
+              type="button"
+              onClick={() => void onReanalyze()}
+              disabled={isReanalyzing}
+              className={
+                isReanalyzing
+                  ? 'cursor-wait text-amber-400'
+                  : 'text-zinc-400 underline underline-offset-2 hover:text-zinc-100'
+              }
+            >
+              {isReanalyzing ? 'analyzing…' : 're-analyze'}
+            </button>
           </div>
         </div>
       </header>
