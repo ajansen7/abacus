@@ -33,7 +33,9 @@ import {
 
 function todayIso(): string {
   const d = new Date();
-  return d.toISOString().slice(0, 10);
+  const offset = d.getTimezoneOffset() * 60000;
+  const localDate = new Date(d.getTime() - offset);
+  return localDate.toISOString().slice(0, 10);
 }
 
 function dayDiff(aIso: string, bIso: string): number {
