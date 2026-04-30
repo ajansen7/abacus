@@ -8,6 +8,7 @@ export const TYPE_STRAVA_ACTIVITY = 'marathon:strava-activity';
 export const TYPE_FLAG = 'marathon:flag';
 export const TYPE_RACE = 'marathon:race';
 export const TYPE_PLAN_CONTEXT = 'marathon:plan-context';
+export const TYPE_COACH_MESSAGE = 'marathon:coach-message';
 
 export const PaceMinPerKm = z
   .string()
@@ -145,3 +146,14 @@ export const PlanContextMeta = z.object({
   updatedAt: z.string().optional(),
 });
 export type PlanContextMeta = z.infer<typeof PlanContextMeta>;
+
+export const CoachMessageRole = z.enum(['user', 'coach']);
+export type CoachMessageRole = z.infer<typeof CoachMessageRole>;
+
+export const CoachMessageMeta = z.object({
+  planId: z.string(),
+  role: CoachMessageRole,
+  content: z.string(),
+  createdAt: z.string(),
+});
+export type CoachMessageMeta = z.infer<typeof CoachMessageMeta>;

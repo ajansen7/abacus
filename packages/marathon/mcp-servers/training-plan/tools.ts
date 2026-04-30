@@ -12,6 +12,8 @@ import {
   TYPE_WORKOUT,
   TYPE_RACE,
   TYPE_PLAN_CONTEXT,
+  TYPE_COACH_MESSAGE,
+  CoachMessageMeta,
   WeekBlockMeta,
   WorkoutMeta as WorkoutMetaSchema,
   WorkoutActual,
@@ -182,6 +184,26 @@ export async function clearWorkoutActual(input: ClearWorkoutActualInput): Promis
     completed: false,
   });
   return { ok: true };
+}
+
+export const AddCoachMessageInput = z.object({
+  planId: z.string().min(1),
+  role: z.enum(['user', 'coach']),
+  content: z.string().min(1),
+});
+export type AddCoachMessageInput = z.infer<typeof AddCoachMessageInput>;
+
+export async function addCoachMessage(input: AddCoachMessageInput): Promise<{ id: string }> {
+  const meta = CoachMessageMeta.parse({
+    ...input,
+    createdAt: new Date().toISOString(),
+  });
+  const id = await beads.create({
+    title: `coach-msg:${input.role}:${meta.createdAt}`,
+    labels: [TYPE_COACH_MESSAGE],
+    metadata: meta,
+  });
+  return { id };
 }
 
 // --- read-only context tools ---

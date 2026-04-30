@@ -27,6 +27,8 @@ import {
   setWorkoutActual,
   ClearWorkoutActualInput,
   clearWorkoutActual,
+  AddCoachMessageInput,
+  addCoachMessage,
   ReadPlanContextInput,
   readPlanContext,
   ListTemplatesInput,
@@ -161,6 +163,19 @@ async function main(): Promise<void> {
     },
     async (input) => {
       const result = await clearWorkoutActual(input);
+      return { content: [{ type: 'text', text: JSON.stringify(result) }] };
+    },
+  );
+
+  server.registerTool(
+    'add_coach_message',
+    {
+      description:
+        'Store a coach conversation message (user or coach reply) as a marathon:coach-message bead. Always use role "coach" when you are the one replying.',
+      inputSchema: AddCoachMessageInput.shape,
+    },
+    async (input) => {
+      const result = await addCoachMessage(input);
       return { content: [{ type: 'text', text: JSON.stringify(result) }] };
     },
   );
