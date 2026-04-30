@@ -9,7 +9,8 @@
       "marathon:week-block",
       "marathon:workout",
       "marathon:effort-log",
-      "marathon:strava-activity"
+      "marathon:strava-activity",
+      "marathon:coach-message"
     ],
     "windowDays": 14,
     "maxItems": 200,
@@ -61,6 +62,10 @@
     "daily_reeval": {
       "preScript": "[ -f dist/scripts/daily-reeval-shim.js ] && node dist/scripts/daily-reeval-shim.js || tsx scripts/daily-reeval-shim.ts",
       "prompt": "Daily plan re-evaluation. Task ID: {{taskId}}. Hot memory: {{hotMemoryJson}}.\n\nRead the plan-context (it may have changed), survey the last 7 days of workouts and activities, and apply any necessary adjustments to the rest-of-current-week + next-week workouts per claude.md. If the plan-context now describes a constraint that wasn't honored in earlier weeks (e.g., new injury, partner availability change), shift the upcoming workouts to comply. Do not touch workouts beyond day+14 in this task. Exit silently if no adjustment is warranted."
+    },
+    "coach_reply": {
+      "preScript": "[ -f dist/scripts/coach-reply-shim.js ] && node dist/scripts/coach-reply-shim.js || tsx scripts/coach-reply-shim.ts",
+      "prompt": "Coach reply task. Task ID: {{taskId}}. Payload: {{payloadJson}}.\n\nHot memory (includes plan, workouts, recent activities, and coach conversation history):\n{{hotMemoryJson}}\n\nA user has sent a message to their running coach. Your job:\n\n1. Find the most recent `marathon:coach-message` with `role: \"user\"` in hot memory. That is the message to reply to.\n\n2. Formulate a clear, warm, actionable coaching response (2-5 sentences). Write like a coach talking to an athlete — direct, encouraging, specific. No bullet lists.\n\n3. If plan adjustments are warranted (schedule conflict, injury, missed workout pattern), call `update_workout` on workouts within the 14-day window per claude.md rules. To reschedule a workout to a different day, pass `date` in the patch (YYYY-MM-DD). Never touch workouts beyond day+14.\n\n4. Call `add_coach_message({ planId: \"<active plan id>\", role: \"coach\", content: \"<your reply>\" })` to deliver your response. In the reply: if you changed the plan, say exactly what you changed and why (e.g., 'I moved Thursday\\'s tempo run to Saturday to give your knee more recovery time.'). If no changes are needed, say why the current plan is appropriate.\n\nThe `planId` is the `id` field of the `marathon:training-plan` in hot memory."
     }
   }
 }
