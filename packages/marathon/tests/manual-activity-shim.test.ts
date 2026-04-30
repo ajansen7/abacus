@@ -73,7 +73,7 @@ describe('manualActivityCore — delete', () => {
 });
 
 describe('manualActivityCore — reassign', () => {
-  it('enqueues process_activity with forceActivityId and reconcileWorkoutId', async () => {
+  it('enqueues process_activity with activityIssueId and workoutId', async () => {
     const beads = makeBeads([
       { id: 'a-9', labels: ['marathon:strava-activity'], metadata: {}, status: 'open' },
       { id: 'w-9', labels: ['marathon:workout'], metadata: {}, status: 'open' },
@@ -83,8 +83,23 @@ describe('manualActivityCore — reassign', () => {
       { op: 'reassign', activityIssueId: 'a-9', workoutId: 'w-9' },
       { beads: beads as any, queue: queue as any },
     );
-    expect(queue.enqueued[0].payload.forceActivityId).toBe('a-9');
-    expect(queue.enqueued[0].payload.reconcileWorkoutId).toBe('w-9');
+    expect(queue.enqueued[0].kind).toBe('process_activity');
+    expect(queue.enqueued[0].payload.activityIssueId).toBe('a-9');
+    expect(queue.enqueued[0].payload.workoutId).toBe('w-9');
+  });
+
+  it('does not write actual directly onto the workout', async () => {
+    const beads = makeBeads([
+      { id: 'a-9', labels: ['marathon:strava-activity'], metadata: {}, status: 'open' },
+      { id: 'w-9', labels: ['marathon:workout'], metadata: {}, status: 'open' },
+    ]);
+    const queue = makeQueue();
+    await manualActivityCore(
+      { op: 'reassign', activityIssueId: 'a-9', workoutId: 'w-9' },
+      { beads: beads as any, queue: queue as any },
+    );
+    const workout = beads.issues.find((i) => i.id === 'w-9')!;
+    expect((workout.metadata as any).actual).toBeUndefined();
   });
 });
 

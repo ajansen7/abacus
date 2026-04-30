@@ -2,7 +2,6 @@
 import { z } from 'zod';
 import { Beads, Queue } from '@abacus/platform';
 import { IsoDate, TYPE_STRAVA_ACTIVITY, TYPE_WEEK_BLOCK, TYPE_WORKOUT } from '../lib/types.js';
-import { mapStravaTypeToActualKind } from '../lib/activity-mapping.js';
 
 // --- Output helpers (match strava-webhook-shim.ts pattern) ---
 type Action =
@@ -115,32 +114,13 @@ export async function manualActivityCore(req: ManualActivityRequest, { beads, qu
       throw new Error(`not a strava-activity: ${req.activityIssueId}`);
     }
 
-    // Set actual directly so the workout is immediately marked as matched.
-    const actMeta = (activity.metadata ?? {}) as Record<string, any>;
-    const actData = (actMeta.activity ?? {}) as Record<string, any>;
-    const sportType = String(actData.type ?? actData.sport_type ?? '');
-    const activityKind = mapStravaTypeToActualKind(sportType);
-    const durationMin = actData.moving_time ? Math.round(Number(actData.moving_time) / 60) : undefined;
-
-    await beads.updateMetadata(req.workoutId, {
-      actual: {
-        activityId: req.activityIssueId,
-        activityKind,
-        source: actMeta.source ?? 'strava',
-        deviationStatus: 'met',
-        ...(durationMin !== undefined ? { durationMin } : {}),
-      },
-      completed: true,
-    });
-
-    // Enqueue reeval so the agent can adjust if needed
+    // Let the agent assess deviationStatus and adapt the plan — don't hardcode 'met'.
     await queue.enqueue({
       product: 'marathon',
-      kind: 'daily_reeval',
+      kind: 'process_activity',
       payload: {
-        reconcileWorkoutId: req.workoutId,
-        forceActivityId: req.activityIssueId,
-        reason: 'manual-reassign',
+        activityIssueId: req.activityIssueId,
+        workoutId: req.workoutId,
       },
       dedupeKey: `manual-reassign:${req.workoutId}:${req.activityIssueId}`,
     });
