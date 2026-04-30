@@ -27,6 +27,17 @@ function daysUntil(isoDate: string | undefined): number | null {
   return Math.ceil((target - Date.now()) / 86_400_000);
 }
 
+function lastSyncedLabel(iso: string | undefined): string {
+  if (!iso) return 'Never synced';
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return 'Synced just now';
+  if (mins < 60) return `Synced ${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `Synced ${hrs}h ago`;
+  return `Synced ${Math.floor(hrs / 24)}d ago`;
+}
+
 function unmatchedActivities(
   activities: FullActivityEntry[],
   weeks: MarathonState['weeks'],
@@ -116,6 +127,7 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
   const [showUnmatched, setShowUnmatched] = useState(false);
   const [matchPreview, setMatchPreview] = useState<MatchResult[] | null>(null);
   const [matching, setMatching] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const esRef = useRef<EventSource | null>(null);
 
   const refresh = useCallback(async () => {
@@ -204,6 +216,19 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
     setMatching(false);
     setMatchPreview(null);
     void refresh();
+  }
+
+  async function onSync() {
+    if (!state?.plan?.id) return;
+    setSyncing(true);
+    try {
+      await webhookPost('sync-strava', { planId: state.plan.id });
+      await refresh();
+    } catch (err) {
+      console.error('sync failed', err);
+    } finally {
+      setSyncing(false);
+    }
   }
 
   return (
@@ -305,6 +330,28 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
         </section>
       ) : null}
 
+      {/* Activities bar — always visible when there's an active plan */}
+      {state.plan && (
+        <section className="mb-4">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs uppercase tracking-widest text-muted">Activities</span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-600">
+                {lastSyncedLabel(state.plan?.lastSyncedAt)}
+              </span>
+              <button
+                type="button"
+                onClick={() => void onSync()}
+                disabled={syncing}
+                className="rounded-md border border-zinc-700 bg-zinc-800 px-3 py-1 text-xs text-zinc-300 hover:bg-zinc-700 disabled:opacity-50"
+              >
+                {syncing ? 'Syncing…' : 'Sync'}
+              </button>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* Unmatched / extra activities (didn't map to a planned workout) */}
       {unmatched.length > 0 ? (
         <section className="mb-6">
@@ -363,7 +410,7 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
                     disabled={matching}
                     className="rounded bg-indigo-600 px-3 py-1 text-xs font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
                   >
-                    {matching ? 'Matching…' : 'Confirm'}
+                    {matching ? 'Queuing…' : 'Confirm'}
                   </button>
                 )}
                 <button
