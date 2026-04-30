@@ -5,6 +5,15 @@ activities, maintains a structured training plan, and uses Claude Code sessions 
 what was actually done against what was planned — adapting upcoming workouts when life gets
 in the way.
 
+## Preview
+
+![Marathon Dashboard Overview](./assets/dashboard_main.png)
+_The main dashboard showing the full 28-week plan, expandable workout tiles, and the current week's progress._
+
+![Ask Coach Feature](./assets/dashboard_chat.png)
+_The "Ask Coach" floating action button allows for natural language interaction with the training plan._
+
+
 ## What it does
 
 - **Race-driven planning** — input a target race (name, date, distance) plus a training
@@ -24,6 +33,9 @@ in the way.
   a plan adjustment. Changes trigger a `daily_reeval` task.
 - **Daily re-evaluation** — a scheduled (launchd) task re-reads the plan-context and recent
   history and adjusts upcoming workouts if constraints have changed.
+- **Perceived effort logging** — log RPE (1–10) and notes for completed workouts directly
+  from the dashboard to help the coach gauge your fatigue and recovery.
+
 
 ## Dashboard routes
 
@@ -41,6 +53,11 @@ The current week auto-scrolls into view and is highlighted with a green "now"
 badge. Past weeks are dimmed with a completion percentage. Click any row to
 expand it into full workout tiles showing planned targets and actual activity
 details (name, distance, time, pace) when matched.
+
+A global "Ask Coach" floating action button (bottom right) opens a chat interface
+where you can ask questions about your plan, request schedule adjustments, or
+get training advice.
+
 
 ## Plan templates
 

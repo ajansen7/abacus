@@ -42,6 +42,9 @@ automatically — no code changes to `packages/abacus/`.
 
 Marathon (`packages/marathon/`) is the first product and the platform's PoC.
 
+![Marathon Dashboard](./packages/marathon/assets/dashboard_main.png)
+
+
 - `scripts/seed-plan.ts` — deterministic CLI that lays down 1 plan + N week-blocks + 7N workouts in Beads.
 - `scripts/strava-onboard.ts` — one-shot OAuth handshake; writes `STRAVA_REFRESH_TOKEN` to `.env.local`.
 - `scripts/strava-subscribe.ts` — create / list / delete Strava webhook push-subscriptions.
