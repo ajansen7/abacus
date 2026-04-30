@@ -1,4 +1,7 @@
-export const ABACUS_URL = process.env.NEXT_PUBLIC_ABACUS_URL ?? 'http://127.0.0.1:3001';
+const isServer = typeof window === 'undefined';
+export const ABACUS_URL = isServer
+  ? (process.env.NEXT_PUBLIC_ABACUS_URL ?? 'http://127.0.0.1:3001')
+  : '/api/abacus';
 
 export async function getState(): Promise<MarathonState> {
   const res = await fetch(`${ABACUS_URL}/api/marathon/state`, {
