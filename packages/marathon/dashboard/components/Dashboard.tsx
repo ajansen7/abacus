@@ -130,6 +130,8 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
   const [matchPreview, setMatchPreview] = useState<MatchResult[] | null>(null);
   const [matching, setMatching] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [reanalyzing, setReanalyzing] = useState(false);
+  const [reanalyzeError, setReanalyzeError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
 
   const refresh = useCallback(async () => {
@@ -171,7 +173,10 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
           const filtered = prev.filter((t) => t.taskId !== evt.taskId);
           return [next, ...filtered].slice(0, 10);
         });
-        if (evt.type === 'TASK_COMPLETE' || evt.type === 'TASK_FAILED') void refresh();
+        if (evt.type === 'TASK_COMPLETE' || evt.type === 'TASK_FAILED') {
+          setReanalyzing(false);
+          void refresh();
+        }
       } catch {
         // Non-JSON keepalive — ignore.
       }
@@ -237,13 +242,20 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
     (t) => t.kind === 'coach_reply' && (t.phase === 'queued' || t.phase === 'started'),
   );
 
-  const isReanalyzing = tasks.some(
-    (t) => t.kind === 'daily_reeval' && (t.phase === 'queued' || t.phase === 'started'),
-  );
+  const isReanalyzing =
+    reanalyzing ||
+    tasks.some((t) => t.kind === 'daily_reeval' && (t.phase === 'queued' || t.phase === 'started'));
 
   async function onReanalyze() {
     if (!state?.todayIso) return;
-    await invoke('daily_reeval', {}, `daily_reeval:${state.todayIso}`);
+    setReanalyzing(true);
+    setReanalyzeError(null);
+    try {
+      await invoke('daily_reeval', {}, `daily_reeval:${state.todayIso}`);
+    } catch (err) {
+      setReanalyzeError((err as Error).message);
+      setReanalyzing(false);
+    }
   }
 
   return (
@@ -287,25 +299,30 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
             {connected ? '● live' : '○ offline'}
           </div>
           <div className="text-muted">{state.todayIso}</div>
-          <div className="mt-1 flex gap-2">
-            <a href="/plan/new" className="text-zinc-400 underline underline-offset-2 hover:text-zinc-100">
-              new plan
-            </a>
-            <a href="/plan/context" className="text-zinc-400 underline underline-offset-2 hover:text-zinc-100">
-              context
-            </a>
-            <button
-              type="button"
-              onClick={() => void onReanalyze()}
-              disabled={isReanalyzing}
-              className={
-                isReanalyzing
-                  ? 'cursor-wait text-amber-400'
-                  : 'text-zinc-400 underline underline-offset-2 hover:text-zinc-100'
-              }
-            >
-              {isReanalyzing ? 'analyzing…' : 're-analyze'}
-            </button>
+          <div className="mt-1 flex flex-col items-end gap-1">
+            <div className="flex gap-2">
+              <a href="/plan/new" className="text-zinc-400 underline underline-offset-2 hover:text-zinc-100">
+                new plan
+              </a>
+              <a href="/plan/context" className="text-zinc-400 underline underline-offset-2 hover:text-zinc-100">
+                context
+              </a>
+              <button
+                type="button"
+                onClick={() => void onReanalyze()}
+                disabled={isReanalyzing}
+                className={
+                  isReanalyzing
+                    ? 'cursor-wait text-amber-400'
+                    : 'text-zinc-400 underline underline-offset-2 hover:text-zinc-100'
+                }
+              >
+                {isReanalyzing ? 'analyzing…' : 're-analyze'}
+              </button>
+            </div>
+            {reanalyzeError ? (
+              <div className="text-xs text-rose-400">{reanalyzeError}</div>
+            ) : null}
           </div>
         </div>
       </header>
