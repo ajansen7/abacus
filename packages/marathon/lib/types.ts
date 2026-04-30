@@ -88,6 +88,7 @@ export type WorkoutMeta = z.infer<typeof WorkoutMeta>;
 
 export const WorkoutPatch = z
   .object({
+    date: IsoDate.optional(),
     targetDurationMin: z.number().int().positive().optional(),
     targetPace: PaceMinPerKm.optional(),
     kind: WorkoutKind.optional(),

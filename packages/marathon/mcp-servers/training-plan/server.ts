@@ -55,7 +55,7 @@ async function main(): Promise<void> {
     'update_workout',
     {
       description:
-        'Apply a structural patch to a single workout (target duration, target pace, kind, completed, notes).',
+        'Apply a structural patch to a single workout (date to reschedule, target duration, target pace, kind, completed, notes).',
       inputSchema: UpdateWorkoutInput.shape,
     },
     async (input) => {
