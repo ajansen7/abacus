@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { Workout, FullActivityEntry } from '@/lib/abacus';
 import { webhookPost } from '@/lib/abacus';
 import { EffortSlider } from './EffortSlider';
+import { WorkoutNotes } from './WorkoutNotes';
 
 const KIND_COLOR: Record<string, string> = {
   easy: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
@@ -105,7 +106,7 @@ export function WorkoutTile({ workout, isToday, onEffortLogged, activities }: Pr
         )}
       </div>
 
-      {workout.notes ? <div className="mt-2 whitespace-pre-line text-xs text-muted">{workout.notes}</div> : null}
+      {workout.notes ? <WorkoutNotes notes={workout.notes} /> : null}
 
       {/* Actual section — inline, always visible when present */}
       {actual ? (() => {

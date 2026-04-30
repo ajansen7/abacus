@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { Workout, FullActivityEntry } from '@/lib/abacus';
 import { webhookPost } from '@/lib/abacus';
 import { EffortSlider } from './EffortSlider';
+import { WorkoutNotes } from './WorkoutNotes';
 
 const KIND_COLOR: Record<string, string> = {
   easy: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
@@ -85,7 +86,7 @@ export function DayCard({ date, workout, activities, isToday, onEffortLogged }: 
         )}
       </div>
 
-      {workout?.notes && <div className="mt-2 text-xs text-muted">{workout.notes}</div>}
+      {workout?.notes && <WorkoutNotes notes={workout.notes} />}
 
       {/* Actual section */}
       {activities.length > 0 && (
