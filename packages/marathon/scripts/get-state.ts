@@ -16,11 +16,13 @@
  *     recentEfforts: [...],
  *     recentActivities: [...],
  *     flags: [...],
+ *     coachMessages: [...],
  *     recentTasks: [...],
  *   }
  */
 import { Beads } from '@abacus/platform';
 import {
+  TYPE_COACH_MESSAGE,
   TYPE_EFFORT_LOG,
   TYPE_FLAG,
   TYPE_PLAN_CONTEXT,
@@ -61,6 +63,7 @@ async function main(): Promise<void> {
   const flags = allIssues.filter((i) => i.labels.includes(TYPE_FLAG));
   const races = allIssues.filter((i) => i.labels.includes(TYPE_RACE));
   const planContexts = allIssues.filter((i) => i.labels.includes(TYPE_PLAN_CONTEXT));
+  const coachMsgs = allIssues.filter((i) => i.labels.includes(TYPE_COACH_MESSAGE));
 
   // Pick the most recently updated open plan as the "active" plan.
   const plan =
@@ -201,6 +204,21 @@ async function main(): Promise<void> {
       ...((f.metadata ?? {}) as Record<string, unknown>),
     }));
 
+  const coachMessages = coachMsgs
+    .filter((c) => {
+      const meta = (c.metadata ?? {}) as Record<string, unknown>;
+      return meta.planId === planId;
+    })
+    .map((c) => ({
+      id: c.id,
+      ...((c.metadata ?? {}) as object),
+    }))
+    .sort((a, b) => {
+      const aDate = String((a as Record<string, unknown>).createdAt ?? '');
+      const bDate = String((b as Record<string, unknown>).createdAt ?? '');
+      return aDate.localeCompare(bDate);
+    });
+
   const state = {
     todayIso: today,
     plan: plan
@@ -219,6 +237,7 @@ async function main(): Promise<void> {
     recentActivities,
     allActivities,
     flags: flagsShaped,
+    coachMessages,
   };
 
   process.stdout.write(JSON.stringify(state));

@@ -156,6 +156,14 @@ export interface PlanContextEntry {
   updatedAt?: string;
 }
 
+export interface CoachMessage {
+  id: string;
+  planId?: string;
+  role: 'user' | 'coach';
+  content?: string;
+  createdAt?: string;
+}
+
 export interface FlagEntry {
   id: string;
   status: string;
@@ -177,4 +185,5 @@ export interface MarathonState {
   recentActivities: ActivityEntry[];
   allActivities: FullActivityEntry[];
   flags: FlagEntry[];
+  coachMessages: CoachMessage[];
 }

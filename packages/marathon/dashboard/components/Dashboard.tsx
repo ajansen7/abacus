@@ -6,6 +6,7 @@ import { PlanOverview } from './PlanOverview';
 import { TaskStream } from './TaskStream';
 import { ActivityRow } from './ActivityRow';
 import { eventsUrl, getState, webhookPost, type FullActivityEntry, type MarathonState, type Workout } from '@/lib/abacus';
+import { CoachChat } from './CoachChat';
 
 type LifecycleEvent =
   | { type: 'TASK_QUEUED'; taskId: string; kind: string }
@@ -27,67 +28,6 @@ function daysUntil(isoDate: string | undefined): number | null {
   return Math.ceil((target - Date.now()) / 86_400_000);
 }
 
-function CoachFAB() {
-  const [open, setOpen] = useState(false);
-  const [msg, setMsg] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!msg.trim()) return;
-    setSubmitting(true);
-    setDone(false);
-    try {
-      await webhookPost('coach-message', { message: msg });
-      setMsg('');
-      setDone(true);
-      setTimeout(() => {
-        setDone(false);
-        setOpen(false);
-      }, 2000);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
-      {open && (
-        <form onSubmit={onSubmit} className="w-72 sm:w-80 rounded-xl border border-indigo-500/30 bg-zinc-900/95 p-4 shadow-2xl backdrop-blur-md">
-          <div className="mb-2 flex items-center justify-between">
-            <div className="text-sm font-semibold text-indigo-300">Talk to coach</div>
-            <button type="button" onClick={() => setOpen(false)} className="text-zinc-500 hover:text-zinc-300">✕</button>
-          </div>
-          <textarea
-            value={msg}
-            onChange={(e) => setMsg(e.target.value)}
-            placeholder="e.g., 'Knee hurts, shift load to weekend' or 'Can't run Tuesday'"
-            className="h-24 w-full resize-none rounded-lg border border-border bg-zinc-800/80 p-2.5 text-sm text-zinc-200 outline-none focus:border-indigo-500/50"
-            autoFocus
-          />
-          <div className="mt-3 flex justify-end">
-            <button
-              type="submit"
-              disabled={submitting || !msg.trim()}
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow hover:bg-indigo-500 disabled:opacity-50"
-            >
-              {submitting ? 'Sending…' : done ? 'Sent ✓' : 'Ask coach'}
-            </button>
-          </div>
-        </form>
-      )}
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg transition-transform hover:scale-105 hover:bg-indigo-500 active:scale-95"
-      >
-        <span className="text-2xl leading-none">💬</span>
-      </button>
-    </div>
-  );
-}
 
 function lastSyncedLabel(iso: string | undefined): string {
   if (!iso) return 'Never synced';
@@ -292,6 +232,10 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
       setSyncing(false);
     }
   }
+
+  const isCoachReplying = tasks.some(
+    (t) => t.kind === 'coach_reply' && (t.phase === 'queued' || t.phase === 'started'),
+  );
 
   return (
     <main className="mx-auto max-w-2xl p-4 sm:p-6">
@@ -514,7 +458,12 @@ export function Dashboard({ initial }: { initial: MarathonState | null }) {
         </section>
       ) : null}
 
-      <CoachFAB />
+      <CoachChat
+        coachMessages={state.coachMessages ?? []}
+        planId={state.plan?.id}
+        isCoachReplying={isCoachReplying}
+        onRefresh={() => void refresh()}
+      />
     </main>
   );
 }
