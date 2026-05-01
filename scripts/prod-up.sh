@@ -160,21 +160,31 @@ if [[ "$WITH_TUNNEL" -eq 1 ]]; then
     else
       log "tunnel: $TUNNEL_URL"
 
-      # Verify the local platform server is healthy (fast, reliable).
-      # We don't check the external tunnel URL here because self-referential
-      # HTTPS routing from the same host through cloudflare is unreliable —
-      # the tunnel handles incoming requests from Strava fine even when curl
-      # from localhost can't reach it. Trust cloudflared's "Registered tunnel
-      # connection" log line as proof the tunnel is wired up.
+      # Wait for cloudflared to register the connection with the edge, then
+      # verify the local platform is healthy. The URL appears in cloudflared's
+      # log before the tunnel is actually routable — we must wait for the
+      # "Registered tunnel connection" line before Strava can reach us.
+      log "waiting for tunnel to register with Cloudflare edge…"
+      TUNNEL_CONNECTED=0
+      for i in $(seq 1 30); do
+        if grep -qiE 'registered tunnel connection|connection .* registered' \
+            "$LOG_DIR/cloudflared.log" 2>/dev/null; then
+          TUNNEL_CONNECTED=1
+          break
+        fi
+        sleep 1
+      done
+
+      if [[ "$TUNNEL_CONNECTED" -eq 0 ]]; then
+        err "tunnel did not register within 30s — webhook verification may fail"
+      else
+        log "tunnel registered with Cloudflare edge"
+      fi
+
       log "checking local platform health…"
       LOCAL_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 5 \
         "http://127.0.0.1:3001/health" 2>/dev/null)
-      if [[ "$LOCAL_CODE" == "200" ]]; then
-        log "platform healthy — tunnel assumed reachable"
-        # Give the cloudflare edge a moment to propagate the tunnel connection
-        # before Strava's inbound verification request arrives.
-        sleep 5
-      else
+      if [[ "$LOCAL_CODE" != "200" ]]; then
         err "platform health check returned $LOCAL_CODE — webhook verification may fail"
       fi
 
